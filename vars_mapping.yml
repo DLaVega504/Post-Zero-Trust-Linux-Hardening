@@ -1,0 +1,83 @@
+---
+# vars_mapping.yml
+
+arch_vars:
+  core_packages:
+    - usbguard
+    - fail2ban
+    - audit
+    - aide
+    - snort
+    - arpwatch
+    - clamav
+    - firewalld
+    - zram-generator
+    - snapper
+    - earlyoom
+  arpwatch_user: "nobody"
+  zram_conf_path: "/etc/systemd/zram-generator.conf"
+  audit_rules_path: "/etc/audit/audit.rules"
+  aide_db_path: "/var/lib/aide/aide.db.gz"
+  aide_db_new_path: "/var/lib/aide/aide.db.new.gz"
+  clamav_service: "clamav"
+
+debian_vars:
+  core_packages:
+    - usbguard
+    - fail2ban
+    - auditd
+    - aide
+    - snort
+    - arpwatch
+    - clamav-daemon
+    - firewalld
+    - systemd-zram-generator
+    - snapper
+    - earlyoom
+  arpwatch_user: "arpwatch"
+  zram_conf_path: "/etc/systemd/zram-generator.conf"
+  audit_rules_path: "/etc/audit/rules.d/audit.rules"
+  aide_db_path: "/var/lib/aide/aide.db"
+  aide_db_new_path: "/var/lib/aide/aide.db.new"
+  clamav_service: "clamav-daemon"
+
+fedora_vars:
+  core_packages:
+    - usbguard
+    - fail2ban
+    - auditd
+    - aide
+    - snort
+    - arpwatch
+    - clamav
+    - firewalld
+    - zram-generator
+    - snapper
+    - earlyoom
+  arpwatch_user: "arpwatch"
+  zram_conf_path: "/etc/systemd/zram-generator.conf"
+  audit_rules_path: "/etc/audit/rules.d/audit.rules"
+  aide_db_path: "/var/lib/aide/aide.db.gz"
+  aide_db_new_path: "/var/lib/aide/aide.db.new.gz"
+  clamav_service: "clamd"
+
+suse_vars:
+  core_packages:
+    - usbguard
+    - fail2ban
+    - auditd
+    - aide
+    - snort3
+    - arpwatch
+    - clamav
+    - firewalld
+    - zram-generator
+    - snapper
+    - earlyoom
+  arpwatch_user: "arpwatch"
+  zram_conf_path: "/etc/systemd/zram-generator.conf"
+  audit_rules_path: "/etc/audit/rules.d/audit.rules"
+  aide_db_path: "/var/lib/aide/aide.db.gz"
+  aide_db_new_path: "/var/lib/aide/aide.db.new.gz"
+  clamav_service: "clamd"
+
