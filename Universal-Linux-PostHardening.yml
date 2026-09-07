@@ -1,28 +1,33 @@
 ---
 - name: "Universal Zero-Trust Linux Hardening Framework (Stage 2)"
   hosts: "hardened_nodes"
-  become: true
+  # FIX: Turn off global automated become elevation so it doesn't collide with fact lookups
+  become: false
   gather_facts: true
-
-  # =========================================================================
-  # DEPLOYMENT CONFIGURATION MANAGEMENT ENVIRONMENT VARIABLES
-  # =========================================================================
-  vars:
-    is_workstation: true
 
   tasks:
     - name: "Ingest multi-distribution security baseline mappings file"
       ansible.builtin.include_vars:
         file: "vars_mapping.yml"
         name: "distro_blueprint"
+    # =========================================================================
+    # DYNAMIC HARDWARE & ROLE RECONNAISSANCE ENGINE
+    # =========================================================================
+    - name: "AUTOMATION | Dynamically detect system operational role substrate"
+      ansible.builtin.set_fact:
+        # FIXED: Added a fallback check. If chassis_type is stripped from facts, it safely defaults to true.
+        is_workstation: "{{ ansible_facts['chassis_type'] | lower in ['laptop', 'notebook', 'desktop'] if 'chassis_type' in ansible_facts else true }}"
 
-    # =========================================================================
-    # UNIVERSAL HARDWARE DETECTOR & RUNTIME COMPLIANCE VALIDATORS
-    # =========================================================================
+    - name: "AUTOMATION | Determine best Out-Of-Memory driver based on memory constraints"
+      ansible.builtin.set_fact:
+        # FIXED: Added a fallback check. If total memory stats are stripped, it safely defaults to earlyoom configurations.
+        use_earlyoom: "{{ ansible_facts['memtotal_mb'] < 6144 if 'memtotal_mb' in ansible_facts else true }}"
+
     - name: "Dynamically identify the primary physical wireless interface name"
       ansible.builtin.set_fact:
         wifi_interface: "{{ ansible_facts['interfaces'] | select('match', '^wl.*') | first }}"
       failed_when: "wifi_interface is not defined"
+      when: is_workstation
 
     - name: "Map host platform operational security variables for Arch Linux"
       ansible.builtin.set_fact:
@@ -53,8 +58,9 @@
           - "=========================================================="
           - "          HARDWARE RECONNAISSANCE SIGNATURE MATRICES      "
           - "=========================================================="
-          - "Target Wireless Device Discovered: {{ wifi_interface }}"
-          - "Operational Hardening Mode Blueprint: {{ 'Workstation Desktop Profile' if is_workstation else 'Headless Server Substrate' }}"
+          - "Operational Hardening Mode: {{ 'Workstation Profile' if is_workstation else 'Headless Server Substrate' }}"
+          - "Selected Memory Management Driver: {{ 'EarlyOOM (Legacy/Low-RAM Safety)' if use_earlyoom else 'Systemd-OOMD (Modern PSI Control)' }}"
+          - "Total Detected Memory Footprint: {{ ansible_facts['memtotal_mb'] }} MB"
 
     - name: "Ensure all core security and monitoring packages are installed"
       ansible.builtin.package:
@@ -75,7 +81,6 @@
         group: "root"
         mode: "0644"
       notify: "Reload Kernel Parameters"
-
     - name: "Apply defensive sysctl restrictions against host/network vector drops"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-kernel-hardening.conf"
@@ -90,6 +95,7 @@
         group: "root"
         mode: "0644"
       notify: "Reload Kernel Parameters"
+
     - name: "Ensure parent systemd allocation directory trees exist"
       ansible.builtin.file:
         path: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') | dirname }}"
@@ -103,14 +109,17 @@
         dest: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') }}"
         content: |
           [zram0]
-          zram-size = ram
+          zram-size = {{ 'ram * 0.75' if is_workstation else 'ram / 2' }}
           swap-priority = 100
+          compression-algorithm = lz4
         owner: "root"
         group: "root"
         mode: "0644"
       notify: "Reload Systemd Configuration"
-
-    - name: "Restrict user-space OOM mitigation thresholds"
+    # =========================================================================
+    # CONDITIONALLY DRIVEN OUT-OF-MEMORY ENGINE MANAGERS
+    # =========================================================================
+    - name: "EARLYOOM | Restrict user-space OOM mitigation thresholds"
       ansible.builtin.copy:
         dest: "/etc/default/earlyoom"
         content: |
@@ -119,14 +128,24 @@
         group: "root"
         mode: "0644"
       notify: "Restart Earlyoom Daemon"
-      when: "not is_workstation"
+      when: use_earlyoom
 
-    - name: "Stabilize earlyoom configuration state parameters"
+    - name: "EARLYOOM | Manage lifecycle states of EarlyOOM daemon"
       ansible.builtin.systemd:
         name: "earlyoom"
-        state: "started"
-        enabled: true
+        state: "{{ 'started' if use_earlyoom else 'stopped' }}"
+        enabled: "{{ true if use_earlyoom else false }}"
       ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: "SYSTEMD-OOMD | Manage lifecycle states of modern systemd-oomd component"
+      ansible.builtin.systemd:
+        name: "systemd-oomd"
+        state: "{{ 'started' if not use_earlyoom else 'stopped' }}"
+        enabled: "{{ true if not use_earlyoom else false }}"
+      ignore_errors: "{{ ansible_check_mode }}"
+    # =========================================================================
+    # DEFENSIVE SUBSYSTEMS CONFIGURATION
+    # =========================================================================
     - name: "ARPWATCH SYSTEMD | Structure systemd template mapping folder configuration for Arpwatch"
       ansible.builtin.file:
         path: "/etc/systemd/system/arpwatch@.service.d"
@@ -184,16 +203,15 @@
         - "proton+"
       notify: "Reload Systemd Configuration"
       when: "not ansible_check_mode"
-      changed_when: true
 
     - name: "Provision dynamic persistent alias shortcuts for defensive kill-switch toggles"
       ansible.builtin.copy:
         dest: "/etc/profile.d/firewall-killswitches.sh"
         content: |
           # Universal Firewalld Dual-Kill Switch Toggles
-          # Dynamically provisioned for target interface: {{ wifi_interface }}
-          alias portaloff="sudo firewall-cmd --zone=public --change-interface={{ wifi_interface }}"
-          alias portalon="sudo firewall-cmd --zone=block --change-interface={{ wifi_interface }}"
+          # Dynamically provisioned for target interface: {{ wifi_interface | default('eth0') }}
+          alias portaloff="sudo firewall-cmd --zone=public --change-interface={{ wifi_interface | default('eth0') }}"
+          alias portalon="sudo firewall-cmd --zone=block --change-interface={{ wifi_interface | default('eth0') }}"
         owner: "root"
         group: "root"
         mode: "0644"
@@ -218,49 +236,6 @@
         group: "root"
         mode: "0644"
       notify: "Reload Systemd Configuration"
-
-    - name: "INTEGRITY SYSTEMD | Provision custom AIDE file tracking daemon configuration unit"
-      ansible.builtin.copy:
-        dest: "/etc/systemd/system/aide.service"
-        content: |
-          [Unit]
-          Description=AIDE File Integrity Check
-          After=syslog.target network.target
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/aide --check
-          StandardOutput=journal
-        owner: "root"
-        group: "root"
-        mode: "0644"
-      notify: "Reload Systemd Configuration"
-
-    - name: "INTEGRITY SYSTEMD | Deploys daily 4:00 AM snapshot execution timer mapping"
-      ansible.builtin.copy:
-        dest: "/etc/systemd/system/aide.timer"
-        content: |
-          [Unit]
-          Description=Run AIDE check daily
-
-          [Timer]
-          OnCalendar=*-*-* 04:00:00
-          Persistent=true
-
-          [Install]
-          WantedBy=timers.target
-        owner: "root"
-        group: "root"
-        mode: "0644"
-      notify: "Reload Systemd Configuration"
-
-    - name: "INTEGRITY SYSTEMD | Validate daily background scanning timer states"
-      ansible.builtin.systemd:
-        name: "aide.timer"
-        state: "started"
-        enabled: true
-      ignore_errors: "{{ ansible_check_mode }}"
-
     - name: "INTEGRITY SYSTEMD | Provision custom Tripwire file tracking daemon configuration unit"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/tripwire-check.service"
@@ -302,6 +277,7 @@
         state: "started"
         enabled: true
       ignore_errors: "{{ ansible_check_mode }}"
+
     # =========================================================================
     # UNIVERSAL STORAGE SYSTEMS & HARDENED PERIMETER CONTROLS
     # =========================================================================
@@ -318,10 +294,9 @@
         - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G" }
         - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G" }
         - { path: "/proc", src: "proc", fstype: "proc", opts: "defaults,nosuid,nodev,noexec,hidepid=2,gid=26" }
-        - { path: "/swap/swapfile", src: "none", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
         - { path: "/.snapshots", src: "/dev/mapper/root", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@snapshots" }
+        - { path: "none", src: "{{ '/swap/swapfile' if is_workstation else '/swapfile' }}", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
       tags: [ fstab_enforcement ]
-
     - name: "SSH HARDENING | Enforce universal enterprise-grade SSH access rules"
       ansible.builtin.lineinfile:
         path: "/etc/ssh/sshd_config"
@@ -343,6 +318,7 @@
         - { regexp: "^#?AllowTcpForwarding", line: "AllowTcpForwarding no" }
         - { regexp: "^#?AllowAgentForwarding", line: "AllowAgentForwarding no" }
       notify: "Restart SSH Daemon"
+
     - name: "SECURITY POLICY | Enforce explicit login.defs authentication thresholds"
       ansible.builtin.lineinfile:
         path: "{{ target_env.login_defs_path | default('/etc/login.defs') }}"
@@ -350,7 +326,6 @@
         line: "{{ item.line }}"
         state: "present"
       loop:
-        # --- Authentication Delays & Console Constraints ---
         - { regexp: "^FAIL_DELAY", line: "FAIL_DELAY\t\t3" }
         - { regexp: "^LOG_UNKFAIL_ENAB", line: "LOG_UNKFAIL_ENAB       yes" }
         - { regexp: "^FAILLOG_ENAB", line: "FAILLOG_ENAB        yes" }
@@ -358,14 +333,12 @@
         - { regexp: "^ENV_PATH", line: "ENV_PATH\tPATH=/usr/local/sbin:/usr/local/bin:/usr/bin" }
         - { regexp: "^TTYGROUP", line: "TTYGROUP\ttty" }
         - { regexp: "^TTYPERM", line: "TTYPERM\t\t0600" }
-        # --- Zero-Trust Default Permission Masks ---
         - { regexp: "^UMASK", line: "UMASK\t\t027" }
         - { regexp: "^HOME_MODE", line: "HOME_MODE\t0700" }
         - { regexp: "^SU_WHEEL_ONLY", line: "SU_WHEEL_ONLY\tno" }
         - { regexp: "^DEFAULT_HOME", line: "DEFAULT_HOME\tyes" }
         - { regexp: "^USERGROUPS_ENAB", line: "USERGROUPS_ENAB yes" }
         - { regexp: "^NONEXISTENT", line: "NONEXISTENT\t/nonexistent" }
-        # --- User ID Namespace Allocations ---
         - { regexp: "^UID_MIN", line: "UID_MIN			 1000" }
         - { regexp: "^UID_MAX", line: "UID_MAX			60000" }
         - { regexp: "^SYS_UID_MIN", line: "SYS_UID_MIN		  500" }
@@ -376,7 +349,6 @@
         - { regexp: "^#?SUB_UID_STORE_BY_UID", line: "SUB_UID_STORE_BY_UID\tno" }
         - { regexp: "^#?SUB_UID_DETERMINISTIC", line: "SUB_UID_DETERMINISTIC\tno" }
         - { regexp: "^#?UNSAFE_SUB_UID_DETERMINISTIC_WRAP", line: "UNSAFE_SUB_UID_DETERMINISTIC_WRAP\tno" }
-        # --- Group ID Namespace Allocations ---
         - { regexp: "^GID_MIN", line: "GID_MIN			 1000" }
         - { regexp: "^GID_MAX", line: "GID_MAX			60000" }
         - { regexp: "^SYS_GID_MIN", line: "SYS_GID_MIN		  500" }
@@ -387,7 +359,6 @@
         - { regexp: "^#?SUB_GID_STORE_BY_UID", line: "SUB_GID_STORE_BY_UID\tno" }
         - { regexp: "^#?SUB_GID_DETERMINISTIC", line: "SUB_GID_DETERMINISTIC\tno" }
         - { regexp: "^#?UNSAFE_SUB_GID_DETERMINISTIC_WRAP", line: "UNSAFE_SUB_GID_DETERMINISTIC_WRAP\tno" }
-        # --- Console Account Modification Safetylocks ---
         - { regexp: "^LOGIN_RETRIES", line: "LOGIN_RETRIES\t3" }
         - { regexp: "^LOGIN_TIMEOUT", line: "LOGIN_TIMEOUT\t\t60" }
         - { regexp: "^PASS_CHANGE_TRIES", line: "PASS_CHANGE_TRIES\t5" }
@@ -395,7 +366,6 @@
         - { regexp: "^PASS_MIN_LEN", line: "PASS_MIN_LEN          8" }
         - { regexp: "^CHFN_AUTH", line: "CHFN_AUTH\t\tyes" }
         - { regexp: "^CHFN_RESTRICT", line: "CHFN_RESTRICT\t\trwh" }
-        # --- Password Encryption & Custom Aging Rules ---
         - { regexp: "^ENCRYPT_METHOD", line: "ENCRYPT_METHOD YESCRYPT" }
         - { regexp: "^PASS_MAX_DAYS", line: "PASS_MAX_DAYS   90" }
         - { regexp: "^PASS_MIN_DAYS", line: "PASS_MIN_DAYS   7" }
@@ -431,7 +401,6 @@
         group: "root"
         mode: "0644"
       when: "ansible_facts['os_family'] == 'Archlinux'"
-
     - name: "COMPLIANCE BANNER | Deploy standardized authorization warning banners"
       ansible.builtin.copy:
         content: |
@@ -450,6 +419,7 @@
       loop:
         - "/etc/issue"
         - "/etc/issue.net"
+
     - name: "Force systemd configuration reloads prior to runtime validation loops"
       ansible.builtin.meta: flush_handlers
 
@@ -466,39 +436,15 @@
         mode: "0600"
       notify: "Regenerate Auditd Rules"
 
-    - name: "Query operational availability status of system AIDE hash registry"
-      ansible.builtin.stat:
-        path: "{{ target_env.aide_db_path | default('/var/lib/aide/aide.db.gz') }}"
-      register: aide_db_state
-      tags: [ integrity ]
-
-    - name: "Initialize corporate host signature snapshot data structures"
-      ansible.builtin.command: "nice -n 19 aide --init"
-      register: aide_initialization_job
-      changed_when: true
-      when: "not ansible_check_mode and not (aide_db_state.stat.exists | default(false))"
-      tags: [ integrity ]
-
-    - name: "Commit clean file verification snapshot baseline database to active memory"
-      ansible.builtin.copy:
-        src: "{{ target_env.aide_db_new_path | default('/var/lib/aide/aide.db.new.gz') }}"
-        dest: "{{ target_env.aide_db_path | default('/var/lib/aide/aide.db.gz') }}"
-        remote_src: true
-      changed_when: true
-      when: "not ansible_check_mode and not (aide_db_state.stat.exists | default(false)) and (aide_initialization_job is succeeded)"
-      tags: [ integrity ]
-
     - name: "Extract running system sysctl configurations"
       ansible.builtin.command: "sysctl kernel.dmesg_restrict kernel.kptr_restrict net.ipv4.tcp_syncookies"
       register: kernel_audit_status
       changed_when: false
-      ignore_errors: "{{ ansible_check_mode }}"
 
     - name: "Query current memory page tier tracking layout properties"
       ansible.builtin.command: "swapon --show=NAME,TYPE,SIZE,PRIO"
       register: swap_priority_status
       changed_when: false
-      ignore_errors: "{{ ansible_check_mode }}"
 
     - name: "Fetch execution metadata loops from core zero-trust services"
       ansible.builtin.systemd:
@@ -508,28 +454,26 @@
         - "{{ target_env.clamav_service | default('clamav-daemon') }}"
         - "firewalld"
       register: service_matrix_status
-      ignore_errors: "{{ ansible_check_mode }}"
 
     - name: "Compile cryptographic validation dashboard log"
+      become: true
       ansible.builtin.copy:
         content: |
           # Universal Hardening Framework Verification Report
           Host: {{ ansible_facts['hostname'] }} | Timestamp: {{ ansible_facts['date_time']['iso8601'] }}
           ## 1. Active Kernel Hardening Settings
           ```text
-          {{ kernel_audit_status.stdout | default('Skipped in Check Mode') }}
+          {{ kernel_audit_status.stdout | default('Skipped') }}
           ```
           ## 2. Hybrid Memory Layout (ZRAM & Swapfile Priorities)
           ```text
-          {{ swap_priority_status.stdout | default('Skipped in Check Mode') }}
+          {{ swap_priority_status.stdout | default('Skipped') }}
           ```
           ## 3. Core Defensive Service Operational Matrix
           {% if service_matrix_status.results is defined %}
           {% for svc in service_matrix_status.results %}
           * **Service:** `{{ svc.item }}` -> ActiveState: *{{ svc.status.ActiveState | default('unknown') }}* | LoadState: *{{ svc.status.LoadState | default('unknown') }}*
           {% endfor %}
-          {% else %}
-          * Dynamic service matrix skipped in simulation mode.
           {% endif %}
         dest: "/root/hardening-verification-report.md"
         owner: "root"
@@ -544,9 +488,6 @@
           - "=========================================================="
           - "Report Location: /root/hardening-verification-report.md"
 
-  # =========================================================================
-  # DEPLOYMENT GLOBAL SYSTEM HANDLERS EXECUTION LOOPS
-  # =========================================================================
   handlers:
     - name: "Reload Kernel Parameters"
       ansible.builtin.command: "sysctl --system"
