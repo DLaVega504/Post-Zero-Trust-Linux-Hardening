@@ -300,6 +300,33 @@
           - "      ZERO-TRUST POST-INSTALL HARDENING REPORT GENERATED  "
           - "=========================================================="
           - "Report Location: /root/hardening-verification-report.md"
+    - name: "Output report pointer indicators to terminal display buffers"
+      ansible.builtin.debug:
+        msg:
+          - "=========================================================="
+          - "      ZERO-TRUST POST-INSTALL HARDENING REPORT GENERATED  "
+          - "=========================================================="
+          - "Report Location: /root/hardening-verification-report.md"
+
+    # =========================================================================
+    # YOUR NEW CUSTOM FILESYSTEM TASK PLACED RIGHT HERE:
+    # =========================================================================
+    - name: "HARDENING | Enforce explicit zero-trust filesystem layout mount parameters"
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        opts: "{{ item.opts }}"
+        dump: "{{ item.dump | default('0') }}"
+        passno: "{{ item.passno | default('0') }}"
+        state: "present"
+      loop:
+        - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G" }
+        - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G" }
+        - { path: "/proc", src: "proc", fstype: "proc", opts: "defaults,nosuid,nodev,noexec,hidepid=2,gid=26" }
+        - { path: "/swap/swapfile", src: "none", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
+        - { path: "/.snapshots", src: "/dev/mapper/root", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@snapshots" }
+      tags: [ fstab_enforcement ]
 
   # =========================================================================
   # DEPLOYMENT GLOBAL SYSTEM HANDLERS EXECUTION LOOPS
