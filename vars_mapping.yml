@@ -19,7 +19,7 @@ arch_vars:
   audit_rules_path: "/etc/audit/audit.rules"
   aide_db_path: "/var/lib/aide/aide.db.gz"
   aide_db_new_path: "/var/lib/aide/aide.db.new.gz"
-  clamav_service: "clamav"
+  clamav_service: "clamav-daemon"
 
 debian_vars:
   core_packages:

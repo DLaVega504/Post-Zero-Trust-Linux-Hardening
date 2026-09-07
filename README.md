@@ -104,6 +104,18 @@ ansible-playbook -i hosts.ini Universal-Linux-PostHardening.yml
 
 ---
 
+## 🔍 Post-Deployment Automated Validation Suite
+
+To verify that your multi-layer zero-trust baseline configurations are active and functioning correctly across any distribution, execute the dedicated verification suite playbook. This suite queries your kernel states, firewall tables, tracking configurations, and cgroup drop-ins using human-readable file string verification loops:
+
+```bash
+ansible-playbook -i hosts.ini Verification-Hardening.yml
+```
+
+Upon completion, the suite will display an automated, color-coded diagnostic pass checklist tracking all five critical defense layers.
+
+---
+
 ## 📊 Posture Reporting
 
 Upon a successful execution pass, the framework compiles an administrative audit summary. Read the compiled diagnostic record directly from your terminal:
