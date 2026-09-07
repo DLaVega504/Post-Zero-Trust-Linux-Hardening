@@ -1,4 +1,4 @@
-# Universal Zero-Trust Linux Hardening Framework (Stage 2)
+# 🛡️ Universal Zero-Trust Linux Hardening Framework (Stage 2)
 
 An automated, cross-distribution post-installation security baseline framework designed for **Arch Linux**, **Debian**, **Fedora (RHEL)**, and **openSUSE (Suse)**. This framework applies multi-layer host hardening, kernel optimizations, and defensive daemon shielding across bare-metal server deployments, virtual machines, and local workstations.
 
@@ -9,8 +9,8 @@ This framework establishes a highly hardened operating state immediately followi
 ### Core Hardening Layers
 * **Layer 1: Secure Package Engine** — Forcefully installs critical telemetry, monitoring, and defensive security software tailored to the platform.
 * **Layer 2: Hybrid Memory & Kernel Hardening** — Minimizes runtime vector surface via aggressive sysctl restrictions and deploys systemd memory performance parameters (ZRAM with `lz4` optimization).
-* **Layer 4: Host Daemon Shielding** — Structures custom cgroup resource throttling limits (CPU/Memory quotas) for resource-heavy services like ClamAV, provisions automated out-of-memory protections via `earlyoom`, and instantiates `arpwatch` network monitoring binds.
-* **Layer 4B: Leak-Protection Infrastructure** — Validates firewalld presence and deploys automated networking kill-switches (`portalon`/`portaloff`) to inhibit host data leakage.
+* **Layer 3: Host Daemon Shielding** — Structures custom cgroup resource throttling limits (CPU/Memory quotas) for resource-heavy services like ClamAV, provisions automated out-of-memory protections via `earlyoom`, and instantiates `arpwatch` network monitoring binds.
+* **Layer 4: Leak-Protection Infrastructure** — Validates firewalld presence and deploys automated networking kill-switches (`portalon`/`portaloff`) to inhibit host data leakage.
 * **Layer 5: File Integrity & System Auditing** — Hardens `auditd` logging definitions to actively trace administrative structures, user adjustments, and kernel module execution flags.
 * **Layer 6: Verification Reporting** — Compiles an end-to-end cryptographic and runtime compliance posture report written directly to `/root/hardening-verification-report.md`.
 
@@ -52,7 +52,33 @@ Maintains the explicit software and environment variable dictionaries used by th
 
 ---
 
-## 🛠️ Usage & Operational Flags
+## 🛠️ Distribution Setup & Environment Package Managers
+
+Before executing the playbook, make sure your specific targeted operating system environment has its foundational dependencies fulfilled:
+
+### A. Arch Linux
+```bash
+sudo pacman -Syu --needed python python-pip ansible-core
+```
+
+### B. Debian
+```bash
+sudo apt update && sudo apt install -y python3 python3-pip ansible
+```
+
+### C. Fedora
+```bash
+sudo dnf install -y python3 python3-pip ansible-core
+```
+
+### D. openSUSE
+```bash
+sudo zypper install -y python3 python3-pip ansible
+```
+
+---
+
+## ⚙️ Usage & Operational Flags
 
 ### Workstation vs. Server Deployment Safety Toggle
 Because enterprise-grade server hardening options can degrade graphical interactive environments, this playbook includes a protective safety mechanism. 
@@ -66,14 +92,14 @@ vars:
 ### 1. Safe Dry-Run Verification (Simulation Mode)
 Always validate syntax parsing strings, environment variable interpolation arrays, and state changes via check mode before execution. This pass simulates actions entirely in memory and will **not** modify system configurations:
 ```bash
-ansible-playbook Linux-PostHardening.yml --check --skip-tags=integrity
+ansible-playbook -i hosts.ini Universal-Linux-PostHardening.yml --check --skip-tags=integrity
 ```
 * *Note: `--skip-tags=integrity` is recommended during dry runs to prevent the initial construction phase of filesystem hash registries from executing early.*
 
 ### 2. Live Playbook Deployment
 To execute the playbook live and permanently apply security rules to the targeted infrastructure:
 ```bash
-ansible-playbook Linux-PostHardening.yml
+ansible-playbook -i hosts.ini Universal-Linux-PostHardening.yml
 ```
 
 ---
