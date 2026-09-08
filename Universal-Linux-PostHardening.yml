@@ -1,33 +1,33 @@
 ---
 - name: "Universal Zero-Trust Linux Hardening Framework (Stage 2)"
   hosts: "hardened_nodes"
-  # FIX: Turn off global automated become elevation so it doesn't collide with fact lookups
-  become: false
+  become: true  
   gather_facts: true
+  gather_subset:
+    - "!all"
+    - "!min"
+    - "hardware"
+    - "distribution"
+
+  vars:
+    os_crypt_name: "crypt_root"
+    vault_crypt_name: "secure_vault"
+    perf_mount_opts: "noatime,space_cache=v2,compress=zstd:1"
+    
+    is_workstation: "{{ ansible_facts['chassis_type'] | lower in ['laptop', 'notebook', 'desktop', 'chassis'] if 'chassis_type' in ansible_facts else true }}"
+    use_earlyoom: "{{ ansible_facts['memtotal_mb'] | int < 6144 if 'memtotal_mb' in ansible_facts else true }}"
+    calculated_swap_mb: >-
+      {{
+        (ansible_facts['memtotal_mb'] | int * 2) if (ansible_facts['memtotal_mb'] | int <= 4096) else
+        (ansible_facts['memtotal_mb'] | int)
+      }}
 
   tasks:
+
     - name: "Ingest multi-distribution security baseline mappings file"
       ansible.builtin.include_vars:
         file: "vars_mapping.yml"
         name: "distro_blueprint"
-    # =========================================================================
-    # DYNAMIC HARDWARE & ROLE RECONNAISSANCE ENGINE
-    # =========================================================================
-    - name: "AUTOMATION | Dynamically detect system operational role substrate"
-      ansible.builtin.set_fact:
-        # FIXED: Added a fallback check. If chassis_type is stripped from facts, it safely defaults to true.
-        is_workstation: "{{ ansible_facts['chassis_type'] | lower in ['laptop', 'notebook', 'desktop'] if 'chassis_type' in ansible_facts else true }}"
-
-    - name: "AUTOMATION | Determine best Out-Of-Memory driver based on memory constraints"
-      ansible.builtin.set_fact:
-        # FIXED: Added a fallback check. If total memory stats are stripped, it safely defaults to earlyoom configurations.
-        use_earlyoom: "{{ ansible_facts['memtotal_mb'] < 6144 if 'memtotal_mb' in ansible_facts else true }}"
-
-    - name: "Dynamically identify the primary physical wireless interface name"
-      ansible.builtin.set_fact:
-        wifi_interface: "{{ ansible_facts['interfaces'] | select('match', '^wl.*') | first }}"
-      failed_when: "wifi_interface is not defined"
-      when: is_workstation
 
     - name: "Map host platform operational security variables for Arch Linux"
       ansible.builtin.set_fact:
@@ -52,6 +52,12 @@
     - name: "Validate that target architecture mapping succeeded"
       ansible.builtin.meta: end_play
       when: "target_env is not defined"
+
+    - name: "Dynamically identify primary physical wireless interface name"
+      ansible.builtin.set_fact:
+        wifi_interface: "{{ ansible_facts['interfaces'] | select('match', '^wl.*') | first | default('eth0') }}"
+      when: is_workstation
+
     - name: "Output discovered dynamic hardware attributes to execution buffers"
       ansible.builtin.debug:
         msg:
@@ -61,27 +67,172 @@
           - "Operational Hardening Mode: {{ 'Workstation Profile' if is_workstation else 'Headless Server Substrate' }}"
           - "Selected Memory Management Driver: {{ 'EarlyOOM (Legacy/Low-RAM Safety)' if use_earlyoom else 'Systemd-OOMD (Modern PSI Control)' }}"
           - "Total Detected Memory Footprint: {{ ansible_facts['memtotal_mb'] }} MB"
+          - "Computed Adaptive Hybrid Swap Payload Size: {{ calculated_swap_mb }} MB"
+    - name: "GPU RECON | Scan local host physical PCI bus for discrete graphics controllers"
+      ansible.builtin.command: "cat /sys/bus/pci/devices/*/vendor"
+      register: pci_vendor_dump
+      changed_when: false
 
-    - name: "Ensure all core security and monitoring packages are installed"
+    - name: "GPU RECON | Map structural hardware asset discovery booleans"
+      ansible.builtin.set_fact:
+        has_nvidia: "{{ '0x10de' in pci_vendor_dump.stdout }}"
+        has_amd: "{{ '0x1002' in pci_vendor_dump.stdout or '0x1022' in pci_vendor_dump.stdout }}"
+
+    - name: "GPU LOGGING | Output identified physical display processor layers"
+      ansible.builtin.debug:
+        msg:
+          - "----------------------------------------------------------"
+          - "          DISCOVERED GRAPHICS HARDWARE ACCELERATION       "
+          - "----------------------------------------------------------"
+          - "NVIDIA Hardware Array Detected: {{ has_nvidia }}"
+          - "AMD/Radeon Hardware Array Detected: {{ has_amd }}"
+
+    - name: "GPU PROVISION | Execute proprietary graphic stack deployments for NVIDIA hardware"
       ansible.builtin.package:
-        name: "{{ target_env.core_packages }}"
+        name: >-
+          {{
+            ['nvidia', 'nvidia-utils', 'lib32-nvidia-utils'] if ansible_facts['os_family'] == 'Archlinux' else
+            ['nvidia-driver', 'nvidia-kernel-dkms', 'nvidia-smi'] if ansible_facts['os_family'] == 'Debian' else
+            ['akmod-nvidia', 'xorg-x11-drv-nvidia-cuda'] if ansible_facts['os_family'] == 'RedHat' else
+            ['nvidia-gfxG06-kmp-default', 'x11-video-nvidiaG06']
+          }}
         state: "present"
- 
-    - name: "Apply kernel memory optimizations for dynamic ZRAM execution"
+      become: true
+      when:
+        - "has_nvidia | bool"
+        - "is_workstation | bool"
+        - "not ansible_check_mode"
+
+    - name: "GPU PROVISION | Execute open-source acceleration deployments for AMD/Radeon hardware"
+      ansible.builtin.package:
+        name: >-
+          {{
+            ['xf86-video-amdgpu', 'mesa', 'lib32-mesa'] if ansible_facts['os_family'] == 'Archlinux' else
+            ['xserver-xorg-video-amdgpu', 'mesa-vulkan-drivers'] if ansible_facts['os_family'] == 'Debian' else
+            ['xorg-x11-drv-amdgpu', 'mesa-vdr-drivers'] if ansible_facts['os_family'] == 'RedHat' else
+            ['xf86-video-amdgpu', 'Mesa-libVA']
+          }}
+        state: "present"
+      become: true
+      when:
+        - "has_amd | bool"
+        - "is_workstation | bool"
+        - "not ansible_check_mode"
+    - name: "Ensure parent systemd allocation directory trees exist"
+      ansible.builtin.file:
+        path: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') | dirname }}"
+        state: "directory"
+        owner: "root"
+        group: "root"
+        mode: "0755"
+      become: true
+
+    - name: "Deploy priority parameters to systemd-zram swap configuration"
       ansible.builtin.copy:
-        dest: "/etc/sysctl.d/99-memory-tuning.conf"
+        dest: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') }}"
         content: |
-          vm.swappiness = 150
-          vm.page_cluster = 0
-          vm.dirty_background_ratio = 5
-          vm.dirty_ratio = 10
-          vm.vfs_cache_pressure = 500
-          vm.compaction_proactiveness = 80
+          [zram0]
+          zram-size = ram
+          swap-priority = 32767
+          compression-algorithm = zstd
         owner: "root"
         group: "root"
         mode: "0644"
-      notify: "Reload Kernel Parameters"
-    - name: "Apply defensive sysctl restrictions against host/network vector drops"
+      become: true
+      notify: 
+        - "Reload Systemd Configuration"
+        - "Force Active ZRAM Initialization"
+
+    - name: "RECON | Dynamically extract active primary Btrfs root device block mapper source"
+      ansible.builtin.set_fact:
+        root_device_node: "{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}"
+
+    - name: "HARDENING | Mount Btrfs parent swap subvolume tree safely to unblock file allocation"
+      ansible.posix.mount:
+        path: "/swap"
+        src: "{{ root_device_node }}"
+        fstype: "btrfs"
+        opts: "rw,{{ perf_mount_opts }},subvol=/@swap"
+        dump: "0"
+        passno: "0"
+        state: "mounted"
+      become: true
+
+    - name: "HARDENING | Dynamically forge physical swap file signature matching system calculations"
+      ansible.builtin.shell: |
+        if [ ! -f /swap/swapfile ]; then
+          truncate -L 0 /swap/swapfile
+          chattr +C /swap/swapfile
+          btrfs property set /swap/swapfile compression none
+          dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }}
+          chmod 0600 /swap/swapfile
+          mkswap /swap/swapfile
+        fi
+      become: true
+      register: swapfile_gen
+      changed_when: "'mkswap' in swapfile_gen.stdout"
+      when: "not ansible_check_mode"
+
+    - name: "Force internal playbook handlers execution to initialize active memory states"
+      ansible.builtin.meta: flush_handlers
+
+    - name: "HARDENING | Commit zero-trust filesystem layouts and security tracking matrices directly to fstab"
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        opts: "{{ item.opts }}"
+        dump: "0"
+        passno: "0"
+        state: "{{ item.state | default('present') }}"
+      become: true
+      loop:
+        - { path: "/", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@", state: "present" }
+        - { path: "/home", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,subvol=/@home", state: "present" }
+        - { path: "/var/log", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@log", state: "present" }
+        - { path: "/var/cache/pacman/pkg", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@cache", state: "present" }
+        - { path: "/var/lib/docker", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@docker", state: "present" }
+        - { path: "/var/lib/libvirt/images", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@libvirt", state: "present" }
+        - { path: "/.snapshots", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@snapshots", state: "present" }
+        - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G", state: "mounted" }
+        - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G", state: "mounted" }
+        - { path: "/proc", src: "proc", fstype: "proc", opts: "defaults,nosuid,nodev,noexec,hidepid=2,gid=26", state: "mounted" }
+        - { path: "none", src: "/swap/swapfile", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec", state: "present" }
+
+    - name: "MEMORY | Turn on secondary uncompressed physical memory overflow container in kernel"
+      ansible.builtin.command: "swapon -a -e"
+      become: true
+      changed_when: true
+      when: "not ansible_check_mode"
+    - name: "EARLYOOM | Restrict user-space OOM mitigation thresholds"
+      ansible.builtin.copy:
+        dest: "/etc/default/earlyoom"
+        content: |
+          EARLYOOM_ARGS="-m 10 -s 10 --avoid '^(systemd|sshd|tmux|bash)\(' --prefer '^(chrome|firefox|clamd|clamav-daemon|snort)'"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      become: true
+      notify: "Restart Earlyoom Daemon"
+      when: use_earlyoom
+
+    - name: "EARLYOOM | Manage lifecycle states of EarlyOOM daemon"
+      ansible.builtin.systemd:
+        name: "earlyoom"
+        state: "{{ 'started' if use_earlyoom else 'stopped' }}"
+        enabled: "{{ true if use_earlyoom else false }}"
+      become: true
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: "SYSTEMD-OOMD | Manage lifecycle states of modern systemd-oomd component"
+      ansible.builtin.systemd:
+        name: "systemd-oomd"
+        state: "{{ 'started' if not use_earlyoom else 'stopped' }}"
+        enabled: "{{ true if not use_earlyoom else false }}"
+      become: true
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: "HARDENING | Deploy personal kernel hardening sysctl drop-in"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-kernel-hardening.conf"
         content: |
@@ -94,58 +245,35 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Kernel Parameters"
 
-    - name: "Ensure parent systemd allocation directory trees exist"
-      ansible.builtin.file:
-        path: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') | dirname }}"
-        state: "directory"
-        owner: "root"
-        group: "root"
-        mode: "0755"
-
-    - name: "Deploy priority parameters to systemd-zram swap configuration"
+    - name: "HARDENING | Deploy personal memory tuning sysctl drop-in"
       ansible.builtin.copy:
-        dest: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') }}"
+        dest: "/etc/sysctl.d/99-memory-tuning.conf"
         content: |
-          [zram0]
-          zram-size = {{ 'ram * 0.75' if is_workstation else 'ram / 2' }}
-          swap-priority = 100
-          compression-algorithm = lz4
+          vm.swappiness = 150
+          vm.page_cluster = 0
+          vm.dirty_background_ratio = 5
+          vm.dirty_ratio = 10
+          vm.vfs_cache_pressure = 500
+          vm.compaction_proactiveness = 80
         owner: "root"
         group: "root"
         mode: "0644"
-      notify: "Reload Systemd Configuration"
-    # =========================================================================
-    # CONDITIONALLY DRIVEN OUT-OF-MEMORY ENGINE MANAGERS
-    # =========================================================================
-    - name: "EARLYOOM | Restrict user-space OOM mitigation thresholds"
+      become: true
+      notify: "Reload Kernel Parameters"
+
+    - name: "HARDENING | Deploy personal flatpak namespace sysctl drop-in"
       ansible.builtin.copy:
-        dest: "/etc/default/earlyoom"
+        dest: "/etc/sysctl.d/99-flatpak-namespaces.conf"
         content: |
-          EARLYOOM_ARGS="-m 10 -s 10 --avoid '^(systemd|sshd|tmux|bash)\(' --prefer '^(chrome|firefox|clamd|clamav-daemon|snort)'"
+          kernel.unprivileged_userns_clone=1
         owner: "root"
         group: "root"
         mode: "0644"
-      notify: "Restart Earlyoom Daemon"
-      when: use_earlyoom
-
-    - name: "EARLYOOM | Manage lifecycle states of EarlyOOM daemon"
-      ansible.builtin.systemd:
-        name: "earlyoom"
-        state: "{{ 'started' if use_earlyoom else 'stopped' }}"
-        enabled: "{{ true if use_earlyoom else false }}"
-      ignore_errors: "{{ ansible_check_mode }}"
-
-    - name: "SYSTEMD-OOMD | Manage lifecycle states of modern systemd-oomd component"
-      ansible.builtin.systemd:
-        name: "systemd-oomd"
-        state: "{{ 'started' if not use_earlyoom else 'stopped' }}"
-        enabled: "{{ true if not use_earlyoom else false }}"
-      ignore_errors: "{{ ansible_check_mode }}"
-    # =========================================================================
-    # DEFENSIVE SUBSYSTEMS CONFIGURATION
-    # =========================================================================
+      become: true
+      notify: "Reload Kernel Parameters"
     - name: "ARPWATCH SYSTEMD | Structure systemd template mapping folder configuration for Arpwatch"
       ansible.builtin.file:
         path: "/etc/systemd/system/arpwatch@.service.d"
@@ -153,6 +281,7 @@
         owner: "root"
         group: "root"
         mode: "0755"
+      become: true
 
     - name: "ARPWATCH SYSTEMD | Bind secure user accounts to dynamic Arpwatch instantiation rule definitions"
       ansible.builtin.copy:
@@ -164,6 +293,7 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Systemd Configuration"
 
     - name: "CLAMAV SYSTEMD | Structure custom cgroup resource throttling slice folder for ClamAV"
@@ -173,6 +303,7 @@
         owner: "root"
         group: "root"
         mode: "0755"
+      become: true
 
     - name: "CLAMAV SYSTEMD | Enforce strict CPU runtime quotas and max memory boundaries on ClamAV"
       ansible.builtin.copy:
@@ -187,12 +318,15 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Systemd Configuration"
+
     - name: "Verify that the firewalld management utility is active and initialized"
       ansible.builtin.systemd:
         name: "firewalld"
         state: "started"
         enabled: true
+      become: true
       ignore_errors: "{{ ansible_check_mode }}"
 
     - name: "Permanently assign standard virtual tunnel interfaces to trusted zones"
@@ -201,6 +335,7 @@
         - "tun+"
         - "wg+"
         - "proton+"
+      become: true
       notify: "Reload Systemd Configuration"
       when: "not ansible_check_mode"
 
@@ -215,6 +350,7 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
 
     - name: "SNORT SYSTEMD | Create custom systemd slice directory for Snort"
       ansible.builtin.file:
@@ -223,6 +359,7 @@
         owner: "root"
         group: "root"
         mode: "0755"
+      become: true
 
     - name: "SNORT SYSTEMD | Enforce rigid system process isolation drop-ins on Snort"
       ansible.builtin.copy:
@@ -235,7 +372,9 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Systemd Configuration"
+
     - name: "INTEGRITY SYSTEMD | Provision custom Tripwire file tracking daemon configuration unit"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/tripwire-check.service"
@@ -251,6 +390,7 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Systemd Configuration"
 
     - name: "INTEGRITY SYSTEMD | Deploys daily 3:00 AM snapshot execution timer mapping for Tripwire"
@@ -269,6 +409,7 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       notify: "Reload Systemd Configuration"
 
     - name: "INTEGRITY SYSTEMD | Validate daily background Tripwire scanning timer states"
@@ -276,27 +417,8 @@
         name: "tripwire-check.timer"
         state: "started"
         enabled: true
+      become: true
       ignore_errors: "{{ ansible_check_mode }}"
-
-    # =========================================================================
-    # UNIVERSAL STORAGE SYSTEMS & HARDENED PERIMETER CONTROLS
-    # =========================================================================
-    - name: "HARDENING | Enforce explicit zero-trust filesystem layout mount parameters"
-      ansible.posix.mount:
-        path: "{{ item.path }}"
-        src: "{{ item.src }}"
-        fstype: "{{ item.fstype }}"
-        opts: "{{ item.opts }}"
-        dump: "{{ item.dump | default('0') }}"
-        passno: "{{ item.passno | default('0') }}"
-        state: "present"
-      loop:
-        - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G" }
-        - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G" }
-        - { path: "/proc", src: "proc", fstype: "proc", opts: "defaults,nosuid,nodev,noexec,hidepid=2,gid=26" }
-        - { path: "/.snapshots", src: "/dev/mapper/root", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@snapshots" }
-        - { path: "none", src: "{{ '/swap/swapfile' if is_workstation else '/swapfile' }}", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
-      tags: [ fstab_enforcement ]
     - name: "SSH HARDENING | Enforce universal enterprise-grade SSH access rules"
       ansible.builtin.lineinfile:
         path: "/etc/ssh/sshd_config"
@@ -304,6 +426,7 @@
         line: "{{ item.line }}"
         state: "present"
         validate: "/usr/sbin/sshd -t -f %s"
+      become: true
       loop:
         - { regexp: "^#?Port", line: "Port 22" }
         - { regexp: "^#?LogLevel", line: "LogLevel INFO" }
@@ -325,6 +448,7 @@
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
         state: "present"
+      become: true
       loop:
         - { regexp: "^FAIL_DELAY", line: "FAIL_DELAY\t\t3" }
         - { regexp: "^LOG_UNKFAIL_ENAB", line: "LOG_UNKFAIL_ENAB       yes" }
@@ -400,7 +524,9 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       when: "ansible_facts['os_family'] == 'Archlinux'"
+
     - name: "COMPLIANCE BANNER | Deploy standardized authorization warning banners"
       ansible.builtin.copy:
         content: |
@@ -416,12 +542,10 @@
         owner: "root"
         group: "root"
         mode: "0644"
+      become: true
       loop:
         - "/etc/issue"
         - "/etc/issue.net"
-
-    - name: "Force systemd configuration reloads prior to runtime validation loops"
-      ansible.builtin.meta: flush_handlers
 
     - name: "Write core user identification and system modification tracking metrics to auditd"
       ansible.builtin.copy:
@@ -434,16 +558,19 @@
         owner: "root"
         group: "root"
         mode: "0600"
+      become: true
       notify: "Regenerate Auditd Rules"
 
     - name: "Extract running system sysctl configurations"
       ansible.builtin.command: "sysctl kernel.dmesg_restrict kernel.kptr_restrict net.ipv4.tcp_syncookies"
       register: kernel_audit_status
+      become: true
       changed_when: false
 
     - name: "Query current memory page tier tracking layout properties"
       ansible.builtin.command: "swapon --show=NAME,TYPE,SIZE,PRIO"
       register: swap_priority_status
+      become: true
       changed_when: false
 
     - name: "Fetch execution metadata loops from core zero-trust services"
@@ -454,13 +581,13 @@
         - "{{ target_env.clamav_service | default('clamav-daemon') }}"
         - "firewalld"
       register: service_matrix_status
-
-    - name: "Compile cryptographic validation dashboard log"
       become: true
+
+    - name: "Compile cryptographic compliance posture reporting dashboard log"
       ansible.builtin.copy:
         content: |
           # Universal Hardening Framework Verification Report
-          Host: {{ ansible_facts['hostname'] }} | Timestamp: {{ ansible_facts['date_time']['iso8601'] }}
+          Host: {{ ansible_facts['hostname'] | default('localhost') }} | Framework Core Engine Version: {{ ansible_version.string }}
           ## 1. Active Kernel Hardening Settings
           ```text
           {{ kernel_audit_status.stdout | default('Skipped') }}
@@ -479,6 +606,7 @@
         owner: "root"
         group: "root"
         mode: "0600"
+      become: true
 
     - name: "Output report pointer indicators to terminal display buffers"
       ansible.builtin.debug:
@@ -487,26 +615,36 @@
           - "      ZERO-TRUST POST-INSTALL HARDENING REPORT GENERATED  "
           - "=========================================================="
           - "Report Location: /root/hardening-verification-report.md"
-
   handlers:
     - name: "Reload Kernel Parameters"
       ansible.builtin.command: "sysctl --system"
+      become: true
       changed_when: true
       when: "not ansible_check_mode"
 
     - name: "Reload Systemd Configuration"
       ansible.builtin.systemd:
         daemon_reload: true
+      become: true
+      when: "not ansible_check_mode"
+
+    - name: "Force Active ZRAM Initialization"
+      ansible.builtin.systemd:
+        name: "systemd-zram-setup@zram0"
+        state: "started"
+      become: true
       when: "not ansible_check_mode"
 
     - name: "Restart Earlyoom Daemon"
       ansible.builtin.service:
         name: "earlyoom"
         state: "restarted"
+      become: true
       when: "not ansible_check_mode"
 
     - name: "Regenerate Auditd Rules"
       ansible.builtin.command: "{{ 'auditctl -R /etc/audit/rules.d/audit.rules' if ansible_facts['os_family'] == 'Archlinux' else 'augenrules --load' }}"
+      become: true
       failed_when: false
       changed_when: true
       when: "not ansible_check_mode"
@@ -515,5 +653,6 @@
       ansible.builtin.service:
         name: "{{ 'sshd' if ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat' else 'ssh' }}"
         state: "restarted"
+      become: true
       when: "not ansible_check_mode"
 
