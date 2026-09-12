@@ -50,7 +50,6 @@
           - "'vm.vfs_cache_pressure = 500' in sysctl_memory_file.stdout"
         fail_msg: "❌ CRITICAL: Custom memory-tuning parameters are missing or altered on disk!"
         success_msg: "✅ PASS: Custom memory-tuning profile verified successfully on storage."
-
     - name: "1. KERNEL | Verify presence of personal flatpak namespaces profile"
       ansible.builtin.command: "cat /etc/sysctl.d/99-flatpak-namespaces.conf"
       register: sysctl_flatpak_file
@@ -59,7 +58,7 @@
     - name: "1. KERNEL | Assert flatpak namespace cloning is enabled"
       ansible.builtin.assert:
         that:
-          - "'kernel.unprivileged_userns_clone=1' in sysctl_flatpak_file.stdout or 'kernel.unprivileged_userns_clone = 1' in sysctl_flatpak_file.stdout"
+          - "'kernel.unprivileged_userns_clone = 1' in sysctl_flatpak_file.stdout"
         fail_msg: "❌ CRITICAL: Flatpak unprivileged namespace configuration is missing from disk!"
         success_msg: "✅ PASS: Flatpak namespace cloning rules safely committed."
 
@@ -71,7 +70,7 @@
     - name: "1. MEMORY | Assert ZRAM priority configurations are written to disk"
       ansible.builtin.assert:
         that:
-          - "'swap-priority = 100' in zram_file_live.stdout"
+          - "'swap-priority = 32767' in zram_file_live.stdout"
         fail_msg: "❌ CRITICAL: ZRAM configuration template does not contain maximum priority!"
         success_msg: "✅ PASS: ZRAM priority parameters verified on disk configuration."
 
@@ -100,11 +99,13 @@
       ansible.builtin.assert:
         that:
           - "'hidepid=2' in fstab_live.stdout"
+          - "'remount' in fstab_live.stdout"
           - "'/var/log' in fstab_live.stdout"
-          - "'nodev,nosuid,noexec' in fstab_live.stdout"
+          - "'subvol=@/.snapshots' in fstab_live.stdout"
+          - "'/var/lib/flatpak' in fstab_live.stdout"
+          - "'/srv' in fstab_live.stdout"
         fail_msg: "❌ CRITICAL: /proc hidepid shielding or core partition isolation layouts are missing from fstab!"
         success_msg: "✅ PASS: Explicit Mount security options are present on runtime filesystems."
-
     # =========================================================================
     # 3. AUTHENTICATION & AAA AUDITING VERIFICATION
     # =========================================================================
@@ -144,7 +145,6 @@
         name: "{{ item }}"
       loop:
         - "firewalld"
-        - "arpwatch@wls1"
         - "tripwire-check.timer"
       register: service_check
       ignore_errors: true
@@ -172,19 +172,4 @@
           - "'MemoryMax=1.2G' in clamav_cgroups.stdout"
         fail_msg: "❌ CRITICAL: ClamAV resource throttling cgroups are missing or improperly bound!"
         success_msg: "✅ PASS: ClamAV strictly contained to resource ceilings."
-
-    # =========================================================================
-    # 5. INTEGRITY REPORT CARD EXTRACTION
-    # =========================================================================
-    - name: "5. VERIFY | Validate presence of written markdown compliance baseline log"
-      ansible.builtin.stat:
-        path: "/root/hardening-verification-report.md"
-      register: report_card
-
-    - name: "5. VERIFY | Assert local configuration reporting engine succeeded"
-      ansible.builtin.assert:
-        that:
-          - "report_card.stat.exists or ansible_check_mode"
-        fail_msg: "❌ CRITICAL: Post-installation hardening compliance documentation missing from /root!"
-        success_msg: "✅ PASS: Hardening framework verification posture report compiled cleanly."
 

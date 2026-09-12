@@ -1,6 +1,4 @@
----
 # vars_mapping.yml
-
 arch_vars:
   core_packages:
     - usbguard
@@ -16,7 +14,7 @@ arch_vars:
     - earlyoom
   arpwatch_user: "nobody"
   zram_conf_path: "/etc/systemd/zram-generator.conf"
-  audit_rules_path: "/etc/audit/audit.rules"
+  audit_rules_path: "/etc/audit/rules.d/audit.rules"
   aide_db_path: "/var/lib/aide/aide.db.gz"
   aide_db_new_path: "/var/lib/aide/aide.db.new.gz"
   clamav_service: "clamav-daemon"

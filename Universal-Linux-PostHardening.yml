@@ -1,5 +1,5 @@
 ---
-- name: "Universal Zero-Trust Linux Hardening Framework (Stage 2)"
+- name: "Universal Zero-Trust Linux Hardening Framework (Stage 2 - Production Core)"
   hosts: "hardened_nodes"
   become: true  
   gather_facts: true
@@ -16,14 +16,16 @@
     
     is_workstation: "{{ ansible_facts['chassis_type'] | lower in ['laptop', 'notebook', 'desktop', 'chassis'] if 'chassis_type' in ansible_facts else true }}"
     use_earlyoom: "{{ ansible_facts['memtotal_mb'] | int < 6144 if 'memtotal_mb' in ansible_facts else true }}"
+    
+    # ADVANCED MEMORY PROFILE MANAGEMENT (AUTOMATED HYBRID TIERS)
     calculated_swap_mb: >-
       {{
-        (ansible_facts['memtotal_mb'] | int * 2) if (ansible_facts['memtotal_mb'] | int <= 4096) else
-        (ansible_facts['memtotal_mb'] | int)
+        (ansible_facts['memtotal_mb'] | int * 2) if (ansible_facts['memtotal_mb'] | int <= 6144) else
+        (ansible_facts['memtotal_mb'] | int + 3072) if (ansible_facts['memtotal_mb'] | int >= 6145 and ansible_facts['memtotal_mb'] | int <= 15360) else
+        4096
       }}
 
   tasks:
-
     - name: "Ingest multi-distribution security baseline mappings file"
       ansible.builtin.include_vars:
         file: "vars_mapping.yml"
@@ -52,24 +54,25 @@
     - name: "Validate that target architecture mapping succeeded"
       ansible.builtin.meta: end_play
       when: "target_env is not defined"
+    - name: "PREFLIGHT | Install libpwquality to guarantee PAM stability"
+      ansible.builtin.package:
+        name: "libpwquality"
+        state: "present"
+      when: "ansible_facts['os_family'] == 'Archlinux'"
+
+    - name: "PREFLIGHT | Deploy baseline core defensive software profiles"
+      ansible.builtin.package:
+        name: "{{ target_env.core_packages }}"
+        state: "present"
+      when: "target_env.core_packages is defined and not ansible_check_mode"
 
     - name: "Dynamically identify primary physical wireless interface name"
       ansible.builtin.set_fact:
         wifi_interface: "{{ ansible_facts['interfaces'] | select('match', '^wl.*') | first | default('eth0') }}"
       when: is_workstation
 
-    - name: "Output discovered dynamic hardware attributes to execution buffers"
-      ansible.builtin.debug:
-        msg:
-          - "=========================================================="
-          - "          HARDWARE RECONNAISSANCE SIGNATURE MATRICES      "
-          - "=========================================================="
-          - "Operational Hardening Mode: {{ 'Workstation Profile' if is_workstation else 'Headless Server Substrate' }}"
-          - "Selected Memory Management Driver: {{ 'EarlyOOM (Legacy/Low-RAM Safety)' if use_earlyoom else 'Systemd-OOMD (Modern PSI Control)' }}"
-          - "Total Detected Memory Footprint: {{ ansible_facts['memtotal_mb'] }} MB"
-          - "Computed Adaptive Hybrid Swap Payload Size: {{ calculated_swap_mb }} MB"
     - name: "GPU RECON | Scan local host physical PCI bus for discrete graphics controllers"
-      ansible.builtin.command: "cat /sys/bus/pci/devices/*/vendor"
+      ansible.builtin.shell: "cat /sys/bus/pci/devices/*/vendor"
       register: pci_vendor_dump
       changed_when: false
 
@@ -77,15 +80,6 @@
       ansible.builtin.set_fact:
         has_nvidia: "{{ '0x10de' in pci_vendor_dump.stdout }}"
         has_amd: "{{ '0x1002' in pci_vendor_dump.stdout or '0x1022' in pci_vendor_dump.stdout }}"
-
-    - name: "GPU LOGGING | Output identified physical display processor layers"
-      ansible.builtin.debug:
-        msg:
-          - "----------------------------------------------------------"
-          - "          DISCOVERED GRAPHICS HARDWARE ACCELERATION       "
-          - "----------------------------------------------------------"
-          - "NVIDIA Hardware Array Detected: {{ has_nvidia }}"
-          - "AMD/Radeon Hardware Array Detected: {{ has_amd }}"
 
     - name: "GPU PROVISION | Execute proprietary graphic stack deployments for NVIDIA hardware"
       ansible.builtin.package:
@@ -118,6 +112,7 @@
         - "has_amd | bool"
         - "is_workstation | bool"
         - "not ansible_check_mode"
+
     - name: "Ensure parent systemd allocation directory trees exist"
       ansible.builtin.file:
         path: "{{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') | dirname }}"
@@ -142,7 +137,6 @@
       notify: 
         - "Reload Systemd Configuration"
         - "Force Active ZRAM Initialization"
-
     - name: "RECON | Dynamically extract active primary Btrfs root device block mapper source"
       ansible.builtin.set_fact:
         root_device_node: "{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}"
@@ -158,25 +152,44 @@
         state: "mounted"
       become: true
 
-    - name: "HARDENING | Dynamically forge physical swap file signature matching system calculations"
-      ansible.builtin.shell: |
-        if [ ! -f /swap/swapfile ]; then
-          truncate -L 0 /swap/swapfile
-          chattr +C /swap/swapfile
-          btrfs property set /swap/swapfile compression none
-          dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }}
-          chmod 0600 /swap/swapfile
-          mkswap /swap/swapfile
-        fi
+    - name: "HARDENING | Release kernel swap file lock to prevent text file busy errors"
+      ansible.builtin.command: "swapoff /swap/swapfile"
       become: true
-      register: swapfile_gen
-      changed_when: "'mkswap' in swapfile_gen.stdout"
+      failed_when: false
+      changed_when: false
       when: "not ansible_check_mode"
+
+    - name: "HARDENING | Check the size of the existing physical swap file"
+      ansible.builtin.stat:
+        path: "/swap/swapfile"
+      register: swapfile_stat
+
+    - name: "HARDENING | Dynamically forge or resize physical swap file"
+      ansible.builtin.command: >
+        dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }}
+      become: true
+      when: >
+        not ansible_check_mode and 
+        (not swapfile_stat.stat.exists or swapfile_stat.stat.size != (calculated_swap_mb | int * 1024 * 1024))
+      register: swapfile_allocated
+
+    - name: "HARDENING | Format and secure physical swap file structures"
+      ansible.builtin.file:
+        path: "/swap/swapfile"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+      become: true
+
+    - name: "HARDENING | Run mkswap on modified swap allocation"
+      ansible.builtin.command: "mkswap /swap/swapfile"
+      become: true
+      when: "swapfile_allocated.changed and not ansible_check_mode"
 
     - name: "Force internal playbook handlers execution to initialize active memory states"
       ansible.builtin.meta: flush_handlers
 
-    - name: "HARDENING | Commit zero-trust filesystem layouts and security tracking matrices directly to fstab"
+    - name: "HARDENING | Commit zero-trust filesystem layouts directly to fstab"
       ansible.posix.mount:
         path: "{{ item.path }}"
         src: "{{ item.src }}"
@@ -184,26 +197,48 @@
         opts: "{{ item.opts }}"
         dump: "0"
         passno: "0"
-        state: "{{ item.state | default('present') }}"
+        state: "present"
       become: true
       loop:
-        - { path: "/", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@", state: "present" }
-        - { path: "/home", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,subvol=/@home", state: "present" }
-        - { path: "/var/log", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@log", state: "present" }
-        - { path: "/var/cache/pacman/pkg", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@cache", state: "present" }
-        - { path: "/var/lib/docker", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@docker", state: "present" }
-        - { path: "/var/lib/libvirt/images", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@libvirt", state: "present" }
-        - { path: "/.snapshots", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@snapshots", state: "present" }
-        - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G", state: "mounted" }
-        - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G", state: "mounted" }
-        - { path: "/proc", src: "proc", fstype: "proc", opts: "defaults,nosuid,nodev,noexec,hidepid=2,gid=26", state: "mounted" }
-        - { path: "none", src: "/swap/swapfile", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec", state: "present" }
+        - { path: "/", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@" }
+        - { path: "/home", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,subvol=/@home" }
+        - { path: "/var/log", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@log" }
+        - { path: "/var/cache/pacman/pkg", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@cache" }
+        - { path: "/var/lib/docker", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@docker" }
+        - { path: "/var/lib/libvirt/images", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},subvol=/@libvirt" }
+        - { path: "/.snapshots", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,noatime,space_cache=v2,subvol=@/.snapshots" }
+        - { path: "/var/lib/flatpak", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,noexec,subvol=/@flatpak" }
+        - { path: "/srv", src: "{{ root_device_node }}", fstype: "btrfs", opts: "rw,{{ perf_mount_opts }},nodev,nosuid,subvol=/@srv" }
+        - { path: "/tmp", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=2G" }
+        - { path: "/dev/shm", src: "tmpfs", fstype: "tmpfs", opts: "defaults,noexec,nosuid,nodev,size=1G" }
+        - { path: "/proc", src: "proc", fstype: "proc", opts: "remount,defaults,nosuid,nodev,noexec,hidepid=2,gid=26" }
+        - { path: "none", src: "/swap/swapfile", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
+    - name: "HARDENING | Structure systemd template mapping folder for logind process isolation"
+      ansible.builtin.file:
+        path: "/etc/systemd/system/systemd-logind.service.d"
+        state: "directory"
+        owner: "root"
+        group: "root"
+        mode: "0755"
+      become: true
+
+    - name: "HARDENING | Ensure systemd services respect process isolation parameters safely"
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/systemd-logind.service.d/override.conf"
+        content: |
+          [Service]
+          ProtectProc=invisible
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      become: true
 
     - name: "MEMORY | Turn on secondary uncompressed physical memory overflow container in kernel"
       ansible.builtin.command: "swapon -a -e"
       become: true
       changed_when: true
       when: "not ansible_check_mode"
+
     - name: "EARLYOOM | Restrict user-space OOM mitigation thresholds"
       ansible.builtin.copy:
         dest: "/etc/default/earlyoom"
@@ -268,12 +303,13 @@
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-flatpak-namespaces.conf"
         content: |
-          kernel.unprivileged_userns_clone=1
+          kernel.unprivileged_userns_clone = 1
         owner: "root"
         group: "root"
         mode: "0644"
       become: true
       notify: "Reload Kernel Parameters"
+
     - name: "ARPWATCH SYSTEMD | Structure systemd template mapping folder configuration for Arpwatch"
       ansible.builtin.file:
         path: "/etc/systemd/system/arpwatch@.service.d"
@@ -283,7 +319,7 @@
         mode: "0755"
       become: true
 
-    - name: "ARPWATCH SYSTEMD | Bind secure user accounts to dynamic Arpwatch instantiation rule definitions"
+    - name: "ARPWATCH SYSTEMD | Bind secure user accounts to dynamic Arpwatch instantiation definitions"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/arpwatch@.service.d/override.conf"
         content: |
@@ -321,6 +357,21 @@
       become: true
       notify: "Reload Systemd Configuration"
 
+    - name: "CLAMAV | Inject fast performance directory exclusion pathways"
+      ansible.builtin.lineinfile:
+        path: "/etc/clamav/clamd.conf"
+        line: "ExcludePath {{ item }}"
+        state: "present"
+        insertafter: "EOF"
+      loop:
+        - "^/proc/"
+        - "^/sys/"
+        - "^/dev/"
+        - "^/run/"
+        - "^/tmp/"
+        - "^/var/cache/pacman/pkg/"
+        - "/\\.cache/"
+      when: "ansible_facts['os_family'] == 'Archlinux'"
     - name: "Verify that the firewalld management utility is active and initialized"
       ansible.builtin.systemd:
         name: "firewalld"
@@ -344,7 +395,6 @@
         dest: "/etc/profile.d/firewall-killswitches.sh"
         content: |
           # Universal Firewalld Dual-Kill Switch Toggles
-          # Dynamically provisioned for target interface: {{ wifi_interface | default('eth0') }}
           alias portaloff="sudo firewall-cmd --zone=public --change-interface={{ wifi_interface | default('eth0') }}"
           alias portalon="sudo firewall-cmd --zone=block --change-interface={{ wifi_interface | default('eth0') }}"
         owner: "root"
@@ -375,50 +425,163 @@
       become: true
       notify: "Reload Systemd Configuration"
 
-    - name: "INTEGRITY SYSTEMD | Provision custom Tripwire file tracking daemon configuration unit"
-      ansible.builtin.copy:
-        dest: "/etc/systemd/system/tripwire-check.service"
-        content: |
-          [Unit]
-          Description=Daily Tripwire System Integrity Check
-          After=local-fs.target
+    # ====================================================================
+    # DUAL FILE INTEGRITY MONITORING (AIDE & TRIPWIRE CONFIGURATION)
+    # ====================================================================
+    - name: "FIM | Install AIDE and Tripwire across Debian/RedHat nodes"
+      ansible.builtin.package:
+        name:
+          - aide
+          - tripwire
+        state: "present"
+      when: "ansible_facts['os_family'] != 'Archlinux'"
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/tripwire --check
-          StandardOutput=journal
+    - name: "FIM | Install AIDE only on Arch Linux"
+      ansible.builtin.package:
+        name:
+          - aide
+        state: "present"
+      when: "ansible_facts['os_family'] == 'Archlinux'"
+
+    - name: "AIDE | Deploy highly optimized, ultra-fast baseline configuration file"
+      ansible.builtin.copy:
+        dest: "/etc/aide.conf"
+        content: |
+          # Custom High-Performance Fast Initialization Rules
+          database_in=file:/var/lib/aide/aide.db
+          database_out=file:/var/lib/aide/aide.db.new
+          gzip_dbout=yes
+
+          # Core Definition: Standard Binary and Library Rules
+          FASTCHECK = p+i+u+g+s+m+sha256
+
+          # Hard Exclusions: Drop volatile/huge folders to stop the 2-hour crawl
+          !/dev/.*
+          !/proc/.*
+          !/sys/.*
+          !/run/.*
+          !/tmp/.*
+          !/var/tmp/.*
+          !/var/log/.*
+          !/var/cache/.*
+          
+          # Target Inclusions: Only monitor the critical attack surfaces
+          /etc FASTCHECK
+          /usr/bin FASTCHECK
+          /usr/sbin FASTCHECK
+          /boot FASTCHECK
+        owner: "root"
+        group: "root"
+        mode: "0600"
+    - name: "AIDE | Check for active file tracking database signature"
+      ansible.builtin.stat:
+        path: "/var/lib/aide/aide.db"
+      register: aide_db_file
+
+    - name: "AIDE | Initialize file index signature database (Async)"
+      ansible.builtin.command: "{{ 'aideinit' if ansible_facts['os_family'] == 'Debian' else 'aide --init' }}"
+      async: 900
+      poll: 5
+      when: not aide_db_file.stat.exists
+      register: aide_init_run
+
+    - name: "AIDE | Stage compiled index structure into production state (Debian/Arch)"
+      ansible.builtin.copy:
+        src: "/var/lib/aide/aide.db.new"
+        dest: "/var/lib/aide/aide.db"
+        remote_src: true
+        mode: "0600"
+      when: 
+        - "ansible_facts['os_family'] in ['Debian', 'Archlinux']"
+        - "aide_init_run is changed"
+
+    - name: "TRIPWIRE | Check if cryptographic policy file exists"
+      ansible.builtin.stat:
+        path: "/etc/tripwire/tw.pol"
+      register: tripwire_policy
+      when: "ansible_facts['os_family'] != 'Archlinux'"
+
+    - name: "TRIPWIRE | Initialize baseline verification snapshots"
+      ansible.builtin.command: "tripwire --init --no-passphrase"
+      when: 
+        - "ansible_facts['os_family'] != 'Archlinux'"
+        - "not tripwire_policy.stat.exists"
+      failed_when: false
+      changed_when: true
+
+    - name: "SYSTEMD UNITS | Drop AIDE execution units into local system files"
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        content: "{{ item.content }}"
         owner: "root"
         group: "root"
         mode: "0644"
-      become: true
+      loop:
+        - { name: "aide-check.service", content: "[Unit]\nDescription=AIDE System Integrity Check\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart={{ '/usr/bin/aide.wrapper' if ansible_facts['os_family'] == 'Debian' else '/usr/bin/aide' }} --check\nStandardOutput=journal" }
+        - { name: "aide-check.timer", content: "[Unit]\nDescription=Run AIDE Check Daily at 2AM\n\n[Timer]\nOnCalendar=*-*-* 02:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
       notify: "Reload Systemd Configuration"
 
-    - name: "INTEGRITY SYSTEMD | Deploys daily 3:00 AM snapshot execution timer mapping for Tripwire"
+    - name: "SYSTEMD UNITS | Drop Tripwire execution units into local system files (Non-Arch Only)"
       ansible.builtin.copy:
-        dest: "/etc/systemd/system/tripwire-check.timer"
-        content: |
-          [Unit]
-          Description=Run Tripwire System Integrity Check Daily
-
-          [Timer]
-          OnCalendar=*-*-* 03:00:00
-          Persistent=true
-
-          [Install]
-          WantedBy=timers.target
+        dest: "/etc/systemd/system/{{ item.name }}"
+        content: "{{ item.content }}"
         owner: "root"
         group: "root"
         mode: "0644"
-      become: true
+      loop:
+        - { name: "tripwire-check.service", content: "[Unit]\nDescription=Tripwire System Integrity Check\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/tripwire --check\nStandardOutput=journal" }
+        - { name: "tripwire-check.timer", content: "[Unit]\nDescription=Run Tripwire Check Daily at 4AM\n\n[Timer]\nOnCalendar=*-*-* 04:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
+      when: "ansible_facts['os_family'] != 'Archlinux'"
       notify: "Reload Systemd Configuration"
 
-    - name: "INTEGRITY SYSTEMD | Validate daily background Tripwire scanning timer states"
+    - name: "SYSTEMD TIMERS | Force integrity schedulers to activate on boot"
       ansible.builtin.systemd:
-        name: "tripwire-check.timer"
+        name: "{{ item }}"
         state: "started"
         enabled: true
-      become: true
-      ignore_errors: "{{ ansible_check_mode }}"
+      loop: "{{ ['aide-check.timer'] if ansible_facts['os_family'] == 'Archlinux' else ['aide-check.timer', 'tripwire-check.timer'] }}"
+
+    # ====================================================================
+    # AUTOMATED ENDPOINT SECURITY (FAIL2BAN & USBGUARD)
+    # ====================================================================
+    - name: "ENDPOINT SECURITY | Deploy Fail2ban and USBGuard"
+      ansible.builtin.package:
+        name:
+          - fail2ban
+          - usbguard
+        state: "present"
+
+    - name: "USBGUARD | Check if baseline hardware policy rules are defined"
+      ansible.builtin.stat:
+        path: "/etc/usbguard/rules.conf"
+      register: usbguard_rules
+
+    - name: "USBGUARD | Compile initial trusted connected peripheral authorization grid"
+      ansible.builtin.command: "usbguard generate-policy"
+      register: computed_usb_policy
+      when: not usbguard_rules.stat.exists
+
+    - name: "USBGUARD | Write rules architecture configuration"
+      ansible.builtin.copy:
+        content: "{{ computed_usb_policy.stdout }}"
+        dest: "/etc/usbguard/rules.conf"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+      when: not usbguard_rules.stat.exists
+
+    - name: "ENDPOINT SECURITY | Activate core security infrastructure daemons"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: "started"
+        enabled: true
+      loop:
+        - "fail2ban"
+        - "usbguard"
+        - "{{ 'clamav-freshclam' if ansible_facts['os_family'] == 'Debian' else 'freshclam' }}"
+    # ====================================================================
+    # CONTINUE STANDARD STACK OPERATIONS
+    # ====================================================================
     - name: "SSH HARDENING | Enforce universal enterprise-grade SSH access rules"
       ansible.builtin.lineinfile:
         path: "/etc/ssh/sshd_config"
@@ -470,9 +633,6 @@
         - { regexp: "^SUB_UID_MIN", line: "SUB_UID_MIN		   100000" }
         - { regexp: "^SUB_UID_MAX", line: "SUB_UID_MAX		600100000" }
         - { regexp: "^SUB_UID_COUNT", line: "SUB_UID_COUNT		    65536" }
-        - { regexp: "^#?SUB_UID_STORE_BY_UID", line: "SUB_UID_STORE_BY_UID\tno" }
-        - { regexp: "^#?SUB_UID_DETERMINISTIC", line: "SUB_UID_DETERMINISTIC\tno" }
-        - { regexp: "^#?UNSAFE_SUB_UID_DETERMINISTIC_WRAP", line: "UNSAFE_SUB_UID_DETERMINISTIC_WRAP\tno" }
         - { regexp: "^GID_MIN", line: "GID_MIN			 1000" }
         - { regexp: "^GID_MAX", line: "GID_MAX			60000" }
         - { regexp: "^SYS_GID_MIN", line: "SYS_GID_MIN		  500" }
@@ -480,9 +640,6 @@
         - { regexp: "^SUB_GID_MIN", line: "SUB_GID_MIN		   100000" }
         - { regexp: "^SUB_GID_MAX", line: "SUB_GID_MAX		600100000" }
         - { regexp: "^SUB_GID_COUNT", line: "SUB_GID_COUNT		    65536" }
-        - { regexp: "^#?SUB_GID_STORE_BY_UID", line: "SUB_GID_STORE_BY_UID\tno" }
-        - { regexp: "^#?SUB_GID_DETERMINISTIC", line: "SUB_GID_DETERMINISTIC\tno" }
-        - { regexp: "^#?UNSAFE_SUB_GID_DETERMINISTIC_WRAP", line: "UNSAFE_SUB_GID_DETERMINISTIC_WRAP\tno" }
         - { regexp: "^LOGIN_RETRIES", line: "LOGIN_RETRIES\t3" }
         - { regexp: "^LOGIN_TIMEOUT", line: "LOGIN_TIMEOUT\t\t60" }
         - { regexp: "^PASS_CHANGE_TRIES", line: "PASS_CHANGE_TRIES\t5" }
@@ -529,15 +686,6 @@
 
     - name: "COMPLIANCE BANNER | Deploy standardized authorization warning banners"
       ansible.builtin.copy:
-        content: |
-          ***************************************************************************
-          *                      AUTHORIZED ACCESS ONLY                             *
-          *                                                                         *
-          * This system is restricted strictly to authorized users. Individuals     *
-          * attempting unauthorized access will be prosecuted to the full extent    *
-          * of the law. All activities on this machine are actively monitored and   *
-          * recorded by securety auditing subsystems.                               *
-          ***************************************************************************
         dest: "{{ item }}"
         owner: "root"
         group: "root"
@@ -547,9 +695,9 @@
         - "/etc/issue"
         - "/etc/issue.net"
 
-    - name: "Write core user identification and system modification tracking metrics to auditd"
+    - name: "Write core user identification tracking metrics to auditd"
       ansible.builtin.copy:
-        dest: "{{ '/etc/audit/rules.d/audit.rules' if ansible_facts['os_family'] == 'Archlinux' else target_env.audit_rules_path | default('/etc/audit/audit.rules') }}"
+        dest: "{{ target_env.audit_rules_path | default('/etc/audit/audit.rules') }}"
         content: |
           -w /etc/passwd -p wa -k identity
           -w /etc/group -p wa -k identity
@@ -583,38 +731,21 @@
       register: service_matrix_status
       become: true
 
-    - name: "Compile cryptographic compliance posture reporting dashboard log"
+    - name: "Compile compliance posture reporting dashboard log"
       ansible.builtin.copy:
         content: |
           # Universal Hardening Framework Verification Report
-          Host: {{ ansible_facts['hostname'] | default('localhost') }} | Framework Core Engine Version: {{ ansible_version.string }}
+          Host: {{ ansible_facts['hostname'] | default('localhost') }}
           ## 1. Active Kernel Hardening Settings
-          ```text
           {{ kernel_audit_status.stdout | default('Skipped') }}
-          ```
-          ## 2. Hybrid Memory Layout (ZRAM & Swapfile Priorities)
-          ```text
+          ## 2. Hybrid Memory Layout
           {{ swap_priority_status.stdout | default('Skipped') }}
-          ```
-          ## 3. Core Defensive Service Operational Matrix
-          {% if service_matrix_status.results is defined %}
-          {% for svc in service_matrix_status.results %}
-          * **Service:** `{{ svc.item }}` -> ActiveState: *{{ svc.status.ActiveState | default('unknown') }}* | LoadState: *{{ svc.status.LoadState | default('unknown') }}*
-          {% endfor %}
-          {% endif %}
         dest: "/root/hardening-verification-report.md"
         owner: "root"
         group: "root"
         mode: "0600"
       become: true
 
-    - name: "Output report pointer indicators to terminal display buffers"
-      ansible.builtin.debug:
-        msg:
-          - "=========================================================="
-          - "      ZERO-TRUST POST-INSTALL HARDENING REPORT GENERATED  "
-          - "=========================================================="
-          - "Report Location: /root/hardening-verification-report.md"
   handlers:
     - name: "Reload Kernel Parameters"
       ansible.builtin.command: "sysctl --system"
