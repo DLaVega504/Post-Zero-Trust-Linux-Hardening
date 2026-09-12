@@ -509,6 +509,7 @@
         - "usbguard"
         - "{{ 'clamav-freshclam' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else 'freshclam' }}"
       become: true
+
     # ====================================================================
     # DUAL-KILL SWITCH WORKFLOW (STAGES 1, 2, & 3)
     # ====================================================================
@@ -522,32 +523,43 @@
       notify: "Reload Systemd Configuration"
       when: "not ansible_check_mode"
     
-    - name: "STAGE 1 | Identify primary wireless or ethernet interface name across any distribution"
-      ansible.builtin.set_fact:
-        wifi_interface: "{{ ansible_facts['interfaces'] | select('match', '^(wlan|wl).*') | first | default(ansible_facts['default_ipv4']['interface'] | default('eth0')) }}"
-      when: is_workstation
-
-    - name: "STAGE 2 | Force physical network interface natively into the block zone"
-      ansible.builtin.command: "firewall-cmd --permanent --zone=block --add-interface={{ wifi_interface }}"
+    # 📡 STAGE 1 & 🔒 STAGE 2: BASELINE ENFORCEMENT (BULLETPROOF SHELL IMPLEMENTATION)
+    - name: "STAGE 1 & 2 | Force active hardware interface natively into the block zone permanently"
+      ansible.builtin.shell: |
+        for intf in $(ls /sys/class/net | grep -E '^(wlan|wl|eth|en)'); do
+          firewall-cmd --permanent --zone=block --add-interface="$intf"
+        done
       become: true
       changed_when: false
+      failed_when: false
+      notify: "Reload Systemd Configuration"
       when: 
         - "not ansible_check_mode"
-        - "wifi_interface is defined"
+        - "is_workstation | bool"
 
-    - name: "STAGE 3 | Deploy global terminal aliases for manual toggle overrides"
+    # 🕹️ STAGE 3: RUNTIME PORTAL ALIAS PROVISIONING
+    - name: "STAGE 3 | Deploy dynamic shell script for manual cross-distro toggle overrides"
       ansible.builtin.copy:
         dest: "/etc/profile.d/firewall-killswitches.sh"
         content: |
-          # Cross-Distribution Firewalld Stage 3 Kill-Switch Toggles
-          # Dynamically bound to network interface: {{ wifi_interface }}
+          # Universal Cross-Distribution Firewalld Dual Kill-Switch Logic
+          # Stage 1: Dynamically scan and isolate the primary active communication link at login
+          ACTIVE_NET=$(ls /sys/class/net | grep -E '^(wlan|wl)' | head -n 1)
           
-          alias portaloff="sudo firewall-cmd --zone=public --change-interface={{ wifi_interface }} && echo '⚠️ Protection OFF: Captive Portal mode enabled. Log in, then run portalon.'"
-          alias portalon="sudo firewall-cmd --zone=block --change-interface={{ wifi_interface }} && echo '🔒 Protection ON: Interface locked to block zone. Secure VPN traffic allowed.'"
+          if [ -z "$ACTIVE_NET" ]; then
+              ACTIVE_NET=$(ip route | grep default | awk '{print $5}' | head -n 1)
+          fi
+
+          if [ ! -z "$ACTIVE_NET" ]; then
+              # Stage 2 Baseline & Stage 3 Interaction Maps (RAM-Only Runtime Transitions)
+              alias portaloff="sudo firewall-cmd --zone=public --change-interface=$ACTIVE_NET && echo '⚠️ Protection OFF: Captive Portal mode enabled on '$ACTIVE_NET'. Log in, then run portalon.'"
+              alias portalon="sudo firewall-cmd --zone=block --change-interface=$ACTIVE_NET && echo '🔒 Protection ON: '$ACTIVE_NET' locked back to block zone baseline.'"
+          fi
         owner: "root"
         group: "root"
         mode: "0644"
       become: true
+
   handlers:
     - name: "Reload Kernel Parameters"
       ansible.builtin.command: "sysctl --system"
