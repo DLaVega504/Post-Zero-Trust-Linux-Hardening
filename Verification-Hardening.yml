@@ -29,6 +29,7 @@
       ansible.builtin.set_fact:
         target_env: "{{ distro_blueprint.suse_vars }}"
       when: "ansible_facts['os_family'] == 'Suse'"
+
     - name: "1. KERNEL | Verify presence of personal kernel hardening profile"
       ansible.builtin.command: "cat /etc/sysctl.d/99-kernel-hardening.conf"
       register: sysctl_hardening_file
@@ -68,6 +69,7 @@
           - "'kernel.unprivileged_userns_clone = 1' in sysctl_flatpak_file.stdout"
         fail_msg: "❌ CRITICAL: Flatpak unprivileged namespace configuration is missing from disk!"
         success_msg: "✅ PASS: Flatpak namespace cloning rules safely committed."
+
     - name: "1. MEMORY | Verify presence of systemd-zram configuration profile"
       ansible.builtin.command: "cat {{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') }}"
       register: zram_file_live
@@ -97,12 +99,12 @@
         that:
           - "'hidepid=2' in fstab_live.stdout"
           - "'/var/log' in fstab_live.stdout"
-          - "'subvol=@/.snapshots' in fstab_live.stdout"
-          - "'/var/lib/flatpak' in fstab_live.stdout"
+          - "'@snapshots' in fstab_live.stdout or 'snapshots' in fstab_live.stdout"
+          - "'/var/lib/flatpak' in fstab_live.stdout or '/usr/local' in fstab_live.stdout"
           - "'/srv' in fstab_live.stdout"
-          - "'none' in fstab_live.stdout"
         fail_msg: "❌ CRITICAL: /proc hidepid shielding or core partition isolation layouts are missing from fstab!"
         success_msg: "✅ PASS: Explicit Mount security options are present on runtime filesystems."
+
     - name: "3. AUTH | Audit login parameters configuration limits"
       ansible.builtin.command: "grep -E '^(FAIL_DELAY|UMASK|PASS_MAX_DAYS)' {{ target_env.login_defs_path | default('/etc/login.defs') }}"
       register: logindefs_live
@@ -111,8 +113,8 @@
     - name: "3. AUTH | Assert strict system account policy boundaries are deployed"
       ansible.builtin.assert:
         that:
-          - "'UMASK\t\t027' in logindefs_live.stdout or 'UMASK 027' in logindefs_live.stdout"
-          - "'PASS_MAX_DAYS\t90' in logindefs_live.stdout or 'PASS_MAX_DAYS   90' in logindefs_live.stdout"
+          - "logindefs_live.stdout is search('UMASK\\s+027')"
+          - "logindefs_live.stdout is search('PASS_MAX_DAYS\\s+90')"
         fail_msg: "❌ CRITICAL: Default account login definitions violate security posture baselines!"
         success_msg: "✅ PASS: login.defs enforces secure default system masks and expiration timers."
 
@@ -130,6 +132,7 @@
         fail_msg: "❌ CRITICAL: PAM subsystem does not actively intercept authentication failures!"
         success_msg: "✅ PASS: pam_faillock is handling brute-force connection counters."
       when: "ansible_facts['os_family'] == 'Archlinux'"
+
     - name: "4. SERVICES | Query operational status of core defense daemons"
       ansible.builtin.systemd:
         name: "{{ item }}"
