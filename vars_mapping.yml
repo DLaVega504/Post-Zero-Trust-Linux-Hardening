@@ -1,28 +1,28 @@
 ---
 # vars_mapping.yml
 arch_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav"]
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
   audit_rules_path: "/etc/audit/rules.d/audit.rules"
   clamav_service: "clamav-freshclam"
 
 debian_vars:
-  core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon"]
+  core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon", "sysstat"]
   zram_conf_path: "/etc/default/zram-init"
   login_defs_path: "/etc/login.defs"
   audit_rules_path: "/etc/audit/rules.d/audit.rules"
   clamav_service: "clamav-daemon"
 
 fedora_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update"]
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
   audit_rules_path: "/etc/audit/rules.d/audit.rules"
   clamav_service: "clamav-freshclam"
 
 suse_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav"]
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
   audit_rules_path: "/etc/audit/rules.d/audit.rules"

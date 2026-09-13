@@ -499,6 +499,14 @@
         enabled: true
       become: true
 
+    # 🛠️ FIXED: This task forces the system to download the files first so the loop doesn't crash!
+    - name: "ENDPOINT SECURITY | Download and install enterprise accounting tools"
+      ansible.builtin.package:
+        name: "sysstat"
+        state: "present"
+      become: true
+      when: "not ansible_check_mode"
+
     - name: "ENDPOINT SECURITY | Activate core security infrastructure daemons"
       ansible.builtin.systemd:
         name: "{{ item }}"
@@ -507,58 +515,45 @@
       loop:
         - "fail2ban"
         - "usbguard"
+        - "sysstat"
         - "{{ 'clamav-freshclam' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else 'freshclam' }}"
       become: true
 
+
     # ====================================================================
-    # DUAL-KILL SWITCH WORKFLOW (STAGES 1, 2, & 3)
+    # AUTOMATED SECURITY AUDITING & HARDENING COMPLIANCE REPORTING (LYNIS)
     # ====================================================================
-    - name: "Permanently assign standard virtual tunnel interfaces to trusted zones"
-      ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --add-interface={{ item }}"
-      loop:
-        - "tun+"
-        - "wg+"
-        - "proton+"
-      become: true
-      notify: "Reload Systemd Configuration"
+    - name: "AUDIT | Guarantee that the Lynis auditing framework is present"
+      ansible.builtin.package:
+        name: "lynis"
+        state: "present"
       when: "not ansible_check_mode"
-    
-    # 📡 STAGE 1 & 🔒 STAGE 2: BASELINE ENFORCEMENT (BULLETPROOF SHELL IMPLEMENTATION)
-    - name: "STAGE 1 & 2 | Force active hardware interface natively into the block zone permanently"
-      ansible.builtin.shell: |
-        for intf in $(ls /sys/class/net | grep -E '^(wlan|wl|eth|en)'); do
-          firewall-cmd --permanent --zone=block --add-interface="$intf"
-        done
+
+    - name: "AUDIT | Execute non-interactive enterprise system security scan"
+      ansible.builtin.command: "lynis audit system --quick --cronjob"
+      register: live_lynis_scan
+      become: true
+      changed_when: true
+      failed_when: false
+      when: "not ansible_check_mode"
+
+    - name: "AUDIT | Dynamically extract your fresh Hardening Index score"
+      ansible.builtin.shell: "grep 'hardening_index' /var/log/lynis-report.dat | cut -d'=' -f2"
+      register: compliance_index_metric
       become: true
       changed_when: false
       failed_when: false
-      notify: "Reload Systemd Configuration"
-      when: 
-        - "not ansible_check_mode"
-        - "is_workstation | bool"
+      when: "not ansible_check_mode"
 
-    # 🕹️ STAGE 3: RUNTIME PORTAL ALIAS PROVISIONING
-    - name: "STAGE 3 | Deploy dynamic shell script for manual cross-distro toggle overrides"
-      ansible.builtin.copy:
-        dest: "/etc/profile.d/firewall-killswitches.sh"
-        content: |
-          # Universal Cross-Distribution Firewalld Dual Kill-Switch Logic
-          # Stage 1: Dynamically scan and isolate the primary active communication link at login
-          ACTIVE_NET=$(ls /sys/class/net | grep -E '^(wlan|wl)' | head -n 1)
-          
-          if [ -z "$ACTIVE_NET" ]; then
-              ACTIVE_NET=$(ip route | grep default | awk '{print $5}' | head -n 1)
-          fi
-
-          if [ ! -z "$ACTIVE_NET" ]; then
-              # Stage 2 Baseline & Stage 3 Interaction Maps (RAM-Only Runtime Transitions)
-              alias portaloff="sudo firewall-cmd --zone=public --change-interface=$ACTIVE_NET && echo '⚠️ Protection OFF: Captive Portal mode enabled on '$ACTIVE_NET'. Log in, then run portalon.'"
-              alias portalon="sudo firewall-cmd --zone=block --change-interface=$ACTIVE_NET && echo '🔒 Protection ON: '$ACTIVE_NET' locked back to block zone baseline.'"
-          fi
-        owner: "root"
-        group: "root"
-        mode: "0644"
-      become: true
+    - name: "AUDIT | Output your final zero-trust framework compliance scorecard"
+      ansible.builtin.debug:
+        msg: 
+          - "========================================================"
+          - "🏁 AUTOMATED ZERO-TRUST AUDIT LIFECYCLE COMPLETE"
+          - "📈 Your Discovered Hardening Index Score: {{ compliance_index_metric.stdout | default('N/A') }}/100"
+          - "📝 Detailed report logs are securely archived at: /var/log/lynis.log"
+          - "========================================================"
+      when: "compliance_index_metric.stdout is defined"
 
   handlers:
     - name: "Reload Kernel Parameters"

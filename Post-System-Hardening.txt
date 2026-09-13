@@ -1,0 +1,185 @@
+Universal-Linux-PostHardening.yml 
+BECOME password: 
+
+PLAY [Universal Zero-Trust Linux Hardening Framework (Stage 2 - Production Core)] ***************************************************
+
+TASK [Gathering Facts] **************************************************************************************************************
+ok: [localhost]
+
+TASK [Ingest multi-distribution security baseline mappings file] ********************************************************************
+ok: [localhost]
+
+TASK [PREFLIGHT | Install libpwquality to guarantee PAM stability] ******************************************************************
+ok: [localhost]
+
+TASK [PREFLIGHT | Deploy baseline core defensive software profiles] *****************************************************************
+skipping: [localhost]
+
+TASK [GPU RECON | Scan local host physical PCI bus for discrete graphics controllers] ***********************************************
+ok: [localhost]
+
+TASK [GPU RECON | Map structural hardware asset discovery booleans] *****************************************************************
+ok: [localhost]
+
+TASK [GPU PROVISION | Execute proprietary graphic stack deployments for NVIDIA hardware] ********************************************
+skipping: [localhost]
+
+TASK [GPU PROVISION | Execute open-source acceleration deployments for AMD/Radeon hardware] *****************************************
+skipping: [localhost]
+
+TASK [Ensure parent systemd allocation directory trees exist] ***********************************************************************
+ok: [localhost]
+
+TASK [Deploy priority parameters to systemd-zram swap configuration] ****************************************************************
+ok: [localhost]
+
+TASK [MEMORY | Disable and mask ZRAM generator on high-RAM systems] *****************************************************************
+skipping: [localhost]
+
+TASK [HARDENING | Mount Btrfs parent swap subvolume tree safely to unblock file allocation] *****************************************
+ok: [localhost]
+
+TASK [HARDENING | Release kernel swap file lock to prevent text file busy errors] ***************************************************
+ok: [localhost]
+
+TASK [HARDENING | Check the size of the existing physical swap file] ****************************************************************
+ok: [localhost]
+
+TASK [HARDENING | Dynamically forge or resize physical swap file] *******************************************************************
+skipping: [localhost]
+
+TASK [HARDENING | Format and secure physical swap file structures] ******************************************************************
+ok: [localhost]
+
+TASK [HARDENING | Run mkswap on modified swap allocation] ***************************************************************************
+skipping: [localhost]
+
+TASK [Force internal playbook handlers execution to initialize active memory states] ************************************************
+
+TASK [HARDENING | Commit zero-trust filesystem layouts directly to fstab] ***********************************************************
+ok: [localhost] => (item={'path': '/', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,subvol=/@'})
+ok: [localhost] => (item={'path': '/home', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,subvol=/@home'})
+ok: [localhost] => (item={'path': '/var/log', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,noexec,subvol=/@log'})
+ok: [localhost] => (item={'path': '/var/cache/pacman/pkg', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,noexec,subvol=/@cache'})
+ok: [localhost] => (item={'path': '/var/lib/docker', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,subvol=/@docker'})
+ok: [localhost] => (item={'path': '/var/lib/libvirt/images', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nofail,x-systemd.device-timeout=3s,subvol=/@libvirt'})
+ok: [localhost] => (item={'path': '/.snapshots', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,subvol=@/.snapshots'})
+ok: [localhost] => (item={'path': '/var/lib/flatpak', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,noexec,subvol=/@flatpak'})
+ok: [localhost] => (item={'path': '/srv', 'src': '/dev/mapper/cryptroot', 'fstype': 'btrfs', 'opts': 'rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,subvol=/@srv'})
+ok: [localhost] => (item={'path': '/tmp', 'src': 'tmpfs', 'fstype': 'tmpfs', 'opts': 'defaults,noexec,nosuid,nodev,size=50%'})
+ok: [localhost] => (item={'path': '/dev/shm', 'src': 'tmpfs', 'fstype': 'tmpfs', 'opts': 'defaults,noexec,nosuid,nodev,size=1G'})
+ok: [localhost] => (item={'path': '/proc', 'src': 'proc', 'fstype': 'proc', 'opts': 'remount,defaults,nosuid,nodev,noexec,hidepid=2,gid=26'})
+ok: [localhost] => (item={'path': 'none', 'src': '/swap/swapfile', 'fstype': 'swap', 'opts': 'defaults,pri=10,discard,nodev,nosuid,noexec'})
+
+TASK [HARDENING | Structure systemd template mapping folder for logind process isolation] *******************************************
+ok: [localhost]
+
+TASK [HARDENING | Ensure systemd services respect process isolation parameters safely] **********************************************
+ok: [localhost]
+
+TASK [MEMORY | Turn on secondary uncompressed physical memory overflow container in kernel] *****************************************
+changed: [localhost]
+
+TASK [EARLYOOM | Restrict user-space OOM mitigation thresholds] *********************************************************************
+ok: [localhost]
+
+TASK [EARLYOOM | Manage lifecycle states of EarlyOOM daemon] ************************************************************************
+ok: [localhost]
+
+TASK [SYSTEMD-OOMD | Manage lifecycle states of modern systemd-oomd component] ******************************************************
+ok: [localhost]
+
+TASK [HARDENING | Deploy personal kernel hardening sysctl drop-in] ******************************************************************
+ok: [localhost]
+
+TASK [HARDENING | Deploy personal memory tuning sysctl drop-in] *********************************************************************
+ok: [localhost]
+
+TASK [HARDENING | Deploy personal flatpak namespace sysctl drop-in] *****************************************************************
+ok: [localhost]
+
+TASK [FIM | Install AIDE and Tripwire across Debian/RedHat/Suse nodes] **************************************************************
+skipping: [localhost]
+
+TASK [FIM | Install AIDE natively on Arch Linux] ************************************************************************************
+ok: [localhost]
+
+TASK [AIDE | Deploy highly optimized, ultra-fast baseline configuration file] *******************************************************
+ok: [localhost]
+
+TASK [AIDE | Check for active file tracking database signature] *********************************************************************
+ok: [localhost]
+
+TASK [AIDE | Initialize file index signature database (Async)] **********************************************************************
+skipping: [localhost]
+
+TASK [AIDE | Stage compiled index structure into production state (Debian/Arch)] ****************************************************
+skipping: [localhost]
+
+TASK [DEBIAN FIX | Verify if target audit rules drop-in directory exists] ***********************************************************
+ok: [localhost]
+
+TASK [DEBIAN FIX | Create missing ancestor directory structural path prior to audit definitions] ************************************
+skipping: [localhost]
+
+TASK [DEBIAN FIX | Ensure structural config folder exists for Tripwire validation profiles] *****************************************
+skipping: [localhost]
+
+TASK [TRIPWIRE | Check if cryptographic policy file exists (Non-Arch Only)] *********************************************************
+skipping: [localhost]
+
+TASK [TRIPWIRE | Initialize baseline verification snapshots (Non-Arch Only)] ********************************************************
+skipping: [localhost]
+
+TASK [SYSTEMD UNITS | Drop AIDE execution units into local system files] ************************************************************
+ok: [localhost] => (item={'name': 'aide-check.service', 'content': '[Unit]\nDescription=AIDE System Integrity Check\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/aide --check\nStandardOutput=journal'})
+ok: [localhost] => (item={'name': 'aide-check.timer', 'content': '[Unit]\nDescription=Run AIDE Check Daily at 2AM\n\n[Timer]\nOnCalendar=*-*-* 02:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target'})
+
+TASK [SYSTEMD UNITS | Drop Tripwire execution units into local system files (Non-Arch Only)] ****************************************
+skipping: [localhost] => (item={'name': 'tripwire-check.service', 'content': '[Unit]\nDescription=Tripwire System Integrity Check\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/tripwire --check\nStandardOutput=journal'}) 
+skipping: [localhost] => (item={'name': 'tripwire-check.timer', 'content': '[Unit]\nDescription=Run Tripwire Check Daily at 4AM\n\n[Timer]\nOnCalendar=*-*-* 04:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target'}) 
+skipping: [localhost]
+
+TASK [SYSTEMD TIMERS | Force integrity schedulers to activate on boot] **************************************************************
+ok: [localhost] => (item=aide-check.timer)
+
+TASK [ENDPOINT SECURITY | Deploy Fail2ban and USBGuard] *****************************************************************************
+ok: [localhost]
+
+TASK [USBGUARD | Check if baseline hardware policy rules are defined] ***************************************************************
+ok: [localhost]
+
+TASK [USBGUARD | Dynamically compile live connected peripheral authorization grid] **************************************************
+skipping: [localhost]
+
+TASK [USBGUARD | Write safety-validated rule configuration to disk] *****************************************************************
+skipping: [localhost]
+
+TASK [CLAMAV | Enforce custom background database update frequency thresholds] ******************************************************
+ok: [localhost]
+
+TASK [Verify that the firewalld management utility is active and initialized] *******************************************************
+ok: [localhost]
+
+TASK [ENDPOINT SECURITY | Activate core security infrastructure daemons] ************************************************************
+ok: [localhost] => (item=fail2ban)
+ok: [localhost] => (item=usbguard)
+ok: [localhost] => (item=clamav-freshclam)
+
+TASK [Permanently assign standard virtual tunnel interfaces to trusted zones] *******************************************************
+changed: [localhost] => (item=tun+)
+changed: [localhost] => (item=wg+)
+changed: [localhost] => (item=proton+)
+
+TASK [STAGE 1 & 2 | Force active hardware interface natively into the block zone permanently] ***************************************
+ok: [localhost]
+
+TASK [STAGE 3 | Force global non-login shells to source firewall kill-switches system-wide] *****************************************
+changed: [localhost]
+
+RUNNING HANDLER [Reload Systemd Configuration] **************************************************************************************
+ok: [localhost]
+
+PLAY RECAP **************************************************************************************************************************
+localhost                  : ok=36   changed=3    unreachable=0    failed=0    skipped=16   rescued=0    ignored=0   
+
