@@ -72,11 +72,9 @@
     - name: "RECON | Evaluate active storage architecture state criteria"
       ansible.builtin.set_fact:
         is_btrfs: "{{ root_fstype.stdout | trim == 'btrfs' }}"
-        has_swap_active: "{{ active_swap_matrix.stdout_lines | length > 0 }}"
-        has_swap_partition: "{{ 'partition' in active_swap_matrix.stdout }}"
-        has_swap_file: "{{ 'file' in active_swap_matrix.stdout }}"
         root_device: "{{ root_source_device.stdout | trim }}"
-        has_secure_vault: "{{ root_fstype.stdout | trim == 'btrfs' and 'subvol=@secure' in live_btrfs_subvols.stdout | default('') }}"
+        has_secure_vault: "{{ root_fstype.stdout | trim == 'btrfs' and 'subvol=@secure' in live_btrfs_subvols.stdout | default('') }}" # <-- FIXED NAME
+
     # =========================================================================
     # ENDPOINT PROTECTION | CORE SECURITY PACKAGES PROVISIONING
     # =========================================================================
@@ -126,7 +124,7 @@
         - "not ansible_check_mode"
 
     # =========================================================================
-    # CROSS-DISTRIBUTION SNAPSHOTS & SWAPFILE PROVISIONING CORE
+    # CROSS-DISTRIBUTION SNAPSHOTS PROVISIONING CORE
     # =========================================================================
     - name: "SNAPPER HARDENING | Enforce Arch and Debian standalone snapshot mappings"
       ansible.posix.mount:
@@ -149,6 +147,18 @@
         passno: "0"
         state: "present"
       when: "is_btrfs | bool and ansible_facts['os_family'] == 'Suse' and not ansible_check_mode"
+    # =========================================================================
+    # RE-ENGINEERED SWAP PROVISIONING | DYNAMIC HYBRID MATRIX ENGINE
+    # =========================================================================
+    - name: "SWAP PROVISION | Query live system total memory allocation footprints"
+      ansible.builtin.set_fact:
+        current_active_swap_mb: "{{ ansible_facts['swapfree_mb'] | int + ansible_facts['swaptotal_mb'] | int }}"
+        target_formula_swap_mb: "{{ calculated_swap_mb | int }}"
+
+    - name: "SWAP PROVISION | Determine if additional persistent backing cushion is required"
+      ansible.builtin.set_fact:
+        needs_backing_swapfile: "{{ (current_active_swap_mb | int) < (target_formula_swap_mb | int) }}"
+
 
     - name: "SWAP PROVISION | Ensure local subvolume mountpoint path structure exists"
       ansible.builtin.file:
@@ -157,28 +167,54 @@
         owner: "root"
         group: "root"
         mode: "0750"
-      when: "not has_swap_active | bool and is_btrfs | bool"
+      when: "needs_backing_swapfile | bool and is_btrfs | bool"
 
     - name: "SWAP PROVISION | Mount dedicated swap subvolume workspace temporarily"
       ansible.posix.mount:
         path: "/swap"
-        src: "{{ root_device }}"
+        # DYNAMIC RECONCILIATION BRANCHING ENGINE
+        src: >-
+          {{
+            '/dev/mapper/root' if ('/dev/mapper/' in root_device or 'root' in root_device) else root_device
+          }}
         fstype: "btrfs"
         opts: "rw,noatime,subvol=@swap"
         state: "mounted"
-      when: "not has_swap_active | bool and is_btrfs | bool and not ansible_check_mode"
+      when: "needs_backing_swapfile | bool and is_btrfs | bool and not ansible_check_mode"
 
     - name: "SWAP PROVISION | Verify if a local physical swapfile exists inside volume"
       ansible.builtin.stat:
         path: "/swap/swapfile"
       register: target_swapfile_check
-      when: "not has_swap_active | bool"
+      when: "needs_backing_swapfile | bool"
 
-    - name: "SWAP PROVISION | Create zero-padded tracking allocation block file if missing"
-      ansible.builtin.command: "dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }} status=progress"
+    # =========================================================================
+    # ADVANCED BTRFS NATIVE SWAPFILE PROVISIONING SUB-ARRAY
+    # =========================================================================
+    - name: "SWAP PROVISION | Clear broken or malformed pre-existing swap allocations"
+      ansible.builtin.file:
+        path: "/swap/swapfile"
+        state: "absent"
+      when: "needs_backing_swapfile | bool and not target_swapfile_check.stat.exists"
+
+    - name: "SWAP PROVISION | Touch zero-byte target allocation block anchor"
+      ansible.builtin.file:
+        path: "/swap/swapfile"
+        state: "touch"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+      when: "needs_backing_swapfile | bool and not target_swapfile_check.stat.exists"
+
+    - name: "SWAP PROVISION | Strip compression and isolate block from Btrfs CoW rules"
+      ansible.builtin.command: "chattr +C /swap/swapfile"
+      when: "needs_backing_swapfile | bool and not target_swapfile_check.stat.exists and not ansible_check_mode"
+
+    - name: "SWAP PROVISION | Force a completely contiguous uncompressed disk block allocation"
+      ansible.builtin.command: "fallocate -l {{ calculated_swap_mb }}M /swap/swapfile"
       register: fresh_swap_stream_allocated
       when: 
-        - "not has_swap_active | bool"
+        - "needs_backing_swapfile | bool"
         - "not target_swapfile_check.stat.exists"
         - "not ansible_check_mode"
 
@@ -189,15 +225,21 @@
         group: "root"
         mode: "0600"
         state: "file"
-      when: "not has_swap_active | bool"
+      when: "needs_backing_swapfile | bool and not ansible_check_mode"
 
     - name: "SWAP PROVISION | Initialize swap space filesystem headers"
       ansible.builtin.command: "mkswap /swap/swapfile"
-      when: "not has_swap_active | bool and fresh_swap_stream_allocated.changed and not ansible_check_mode"
+      when: 
+        - "needs_backing_swapfile | bool"
+        - "fresh_swap_stream_allocated is changed"
+        - "not ansible_check_mode"
 
     - name: "SWAP PROVISION | Execute hot activation of swap block into memory tables"
-      ansible.builtin.command: "swapon /swap/swapfile"
-      when: "not has_swap_active | bool and fresh_swap_stream_allocated.changed and not ansible_check_mode"
+      ansible.builtin.command: "swapon -p 10 /swap/swapfile"
+      when: 
+        - "needs_backing_swapfile | bool"
+        - "fresh_swap_stream_allocated is changed"
+        - "not ansible_check_mode"
 
     - name: "SWAP PROVISION | Permanently secure swap target tracking parameters to system fstab"
       ansible.posix.mount:
@@ -208,7 +250,7 @@
         dump: "0"
         passno: "0"
         state: "present"
-      when: "not has_swap_active | bool and not ansible_check_mode"
+      when: "needs_backing_swapfile | bool and not ansible_check_mode"
     # =========================================================================
     # VAULT ENGINE, ANTI-LOCKOUT USBGUARD, & RESOURCE-BALANCED CLAMAV
     # =========================================================================
@@ -254,7 +296,6 @@
         owner: "root"
         group: "{{ target_env.admin_group | default('wheel') }}"
         mode: "0750"
-      when: "has_secure_vault | bool"
 
     - name: "VAULT ENGINE | Map structural shortcuts and environmental aliases"
       ansible.builtin.copy:
@@ -265,7 +306,6 @@
         owner: "root"
         group: "root"
         mode: "0644"
-      when: "has_secure_vault | bool"
 
     - name: "USBGUARD | Ensure configuration parent directories exist"
       ansible.builtin.file:
@@ -275,24 +315,36 @@
         group: "root"
         mode: "0755"
 
-    - name: "USBGUARD | Dynamically compile live connected peripheral authorization grid"
+    - name: "USBGUARD | Scan live connected peripheral topology on this host"
       ansible.builtin.command: "/usr/bin/usbguard generate-policy"
-      register: computed_usb_policy
+      register: live_hardware_scan
       changed_when: false
       failed_when: false
       check_mode: false
 
-    - name: "USBGUARD | Write safety-validated rule configuration to disk"
+    - name: "USBGUARD | Read any existing custom manual rules from local file"
+      ansible.builtin.command: "cat /etc/usbguard/rules.conf"
+      register: existing_rules_ledger
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: "USBGUARD | Dynamically merge scan metrics with local manual rules"
       ansible.builtin.copy:
-        content: "{{ computed_usb_policy.stdout }}\n"
+        content: |
+          # 1. CORE MACHINE TOPOLOGY SCAN (GENERATED AUTOMATICALLY)
+          {{ live_hardware_scan.stdout | default('# No hardware scan returned') }}
+
+          # 2. LOCAL PERSISTENT CUSTOM RULE OVERLAYS (PRESERVED AUTOMATICALLY)
+          {{ existing_rules_ledger.stdout | default('# No pre-existing local rules ledger found') }}
+
+          # 3. UNIVERSAL ANTI-LOCKOUT LIFE JACKET: Allow all human interface devices
+          allow with-interface match { 03:*:* }
         dest: "/etc/usbguard/rules.conf"
         owner: "root"
         group: "root"
         mode: "0600"
-      when:
-        - "computed_usb_policy.stdout is defined"
-        - "computed_usb_policy.stdout | length > 0"
-        - "not ansible_check_mode"
+      when: "not ansible_check_mode"
       notify: "Restart USBGuard Service"
 
     - name: "CLAMAV | Ensure database configuration tracking file is verified"
@@ -312,6 +364,15 @@
       when: "not ansible_check_mode" 
       notify: "Restart ClamAV Freshclam Service"
 
+    - name: "CLAMAV | Ensure systemd drop-in override directory structures exist"
+      ansible.builtin.file:
+        path: "/etc/systemd/system/clamav-daemon.service.d"
+        state: "directory"
+        owner: "root"
+        group: "root"
+        mode: "0755"
+      when: "not ansible_check_mode"
+
     - name: "CLAMAV | Inject custom systemd low-priority cgroup overrides"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/clamav-daemon.service.d/override.conf"
@@ -319,10 +380,8 @@
         owner: "root"
         group: "root"
         mode: "0644"
-        create: true
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
-
     - name: "AIDE | Locate distribution-specific configuration paths"
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -336,7 +395,7 @@
       ansible.builtin.set_fact:
         active_aide_config: "{{ (aide_config_path_check.results | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | first) | default('/etc/aide.conf') }}"
 
-    - name: "AIDE | Inject custom exclusions for volatile virtual paths"
+    - name: "AIDE | Inject custom exclusions for volatile virtual paths and media blocks"
       ansible.builtin.blockinfile:
         path: "{{ active_aide_config }}"
         marker: "# {mark} ANSIBLE MANAGED ISOLATION LAYERS"
@@ -346,6 +405,9 @@
           !/run$
           !/dev$
           !/var/cache$
+          !/home/[^/]+/Music$
+          !/home/[^/]+/Videos$
+          !/home/[^/]+/Downloads$
         create: true
         owner: "root"
         group: "root"
@@ -381,7 +443,6 @@
         - { name: "aide-check.service", content: "[Unit]\nDescription=Automated Post-Hardening File Integrity Security Scan\nAfter=local-fs.target network.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/aide --check\nNice=19\nCPUSchedulingPolicy=idle\nIOSchedulingClass=idle" }
         - { name: "aide-check.timer", content: "[Unit]\nDescription=Trigger Automated System Integrity Scan Daily at 3AM\n\n[Timer]\nOnCalendar=*-*-* 03:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
       notify: "Reload Active Systemd Core"
-
     # =========================================================================
     # ADVANCED ZERO-TRUST IMMUTABLE AUDITING CORE (INTEGRATED ADVANCED UPGRADE)
     # =========================================================================
@@ -441,6 +502,7 @@
         mode: "0600"
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
+
     - name: "HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-hardening.conf"
@@ -543,6 +605,7 @@
         - "snapper-cleanup.timer"
       failed_when: false
       when: "not ansible_check_mode"
+
   handlers:
     - name: "Trigger Active System Kernel Flush"
       ansible.builtin.command: "sysctl --system"
