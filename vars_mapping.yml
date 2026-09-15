@@ -1,4 +1,3 @@
-# vars_mapping.yml
 ---
 arch_vars:
   admin_group: "wheel"
@@ -30,6 +29,7 @@ debian_vars:
     - { name: "@cache", dest: "/var/cache/apt/archives" }
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@srv", dest: "/srv" }
+
 fedora_vars:
   admin_group: "wheel"
   core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
