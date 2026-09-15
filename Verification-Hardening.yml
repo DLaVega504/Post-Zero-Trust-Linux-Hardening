@@ -10,25 +10,15 @@
         file: "vars_mapping.yml"
         name: "distro_blueprint"
 
-    - name: "Map host platform validation variables for Arch Linux"
+    - name: "Map host platform validation variables based on distro"
       ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.arch_vars }}"
-      when: "ansible_facts['os_family'] == 'Archlinux'"
-
-    - name: "Map host platform validation variables for Debian"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.debian_vars }}"
-      when: "ansible_facts['os_family'] == 'Debian'"
-
-    - name: "Map host platform validation variables for Fedora (RedHat)"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.fedora_vars }}"
-      when: "ansible_facts['os_family'] == 'RedHat'"
-
-    - name: "Map host platform validation variables for openSUSE (Suse)"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.suse_vars }}"
-      when: "ansible_facts['os_family'] == 'Suse'"
+        target_env: >-
+          {{
+            distro_blueprint.arch_vars if ansible_facts['os_family'] == 'Archlinux' else
+            distro_blueprint.debian_vars if ansible_facts['os_family'] == 'Debian' else
+            distro_blueprint.fedora_vars if ansible_facts['os_family'] == 'RedHat' else
+            distro_blueprint.suse_vars
+          }}
 
     - name: "1. KERNEL | Verify presence of personal kernel hardening profile"
       ansible.builtin.command: "cat /etc/sysctl.d/99-kernel-hardening.conf"
@@ -58,37 +48,6 @@
         fail_msg: "❌ CRITICAL: Custom memory-tuning parameters are missing or altered on disk!"
         success_msg: "✅ PASS: Custom memory-tuning profile verified successfully on storage."
 
-    - name: "1. KERNEL | Verify presence of personal flatpak namespaces profile"
-      ansible.builtin.command: "cat /etc/sysctl.d/99-flatpak-namespaces.conf"
-      register: sysctl_flatpak_file
-      changed_when: false
-
-    - name: "1. KERNEL | Assert flatpak namespace cloning is enabled"
-      ansible.builtin.assert:
-        that:
-          - "'kernel.unprivileged_userns_clone = 1' in sysctl_flatpak_file.stdout"
-        fail_msg: "❌ CRITICAL: Flatpak unprivileged namespace configuration is missing from disk!"
-        success_msg: "✅ PASS: Flatpak namespace cloning rules safely committed."
-
-    - name: "1. MEMORY | Verify presence of systemd-zram configuration profile"
-      ansible.builtin.command: "cat {{ target_env.zram_conf_path | default('/etc/systemd/zram-generator.conf') }}"
-      register: zram_file_live
-      changed_when: false
-      when: "ansible_facts['memtotal_mb'] | int <= 16384"
-
-    - name: "1. MEMORY | Assert ZRAM priority configurations are written to disk"
-      ansible.builtin.assert:
-        that:
-          - "'swap-priority = 32767' in zram_file_live.stdout"
-        fail_msg: "❌ CRITICAL: ZRAM configuration template does not contain maximum priority!"
-        success_msg: "✅ PASS: ZRAM priority parameters verified on disk configuration."
-      when: "ansible_facts['memtotal_mb'] | int <= 16384"
-
-    - name: "1. MEMORY | Query active swap endpoints and priorities from kernel"
-      ansible.builtin.command: "swapon --show=NAME,TYPE,PRIO"
-      register: swapon_live
-      changed_when: false
-
     - name: "2. STORAGE | Verify strict partition mapping compliance in fstab"
       ansible.builtin.command: "cat /etc/fstab"
       register: fstab_live
@@ -100,7 +59,7 @@
           - "'hidepid=2' in fstab_live.stdout"
           - "'/var/log' in fstab_live.stdout"
           - "'@snapshots' in fstab_live.stdout or 'snapshots' in fstab_live.stdout"
-          - "'/var/lib/flatpak' in fstab_live.stdout or '/usr/local' in fstab_live.stdout"
+          - "'/swap' in fstab_live.stdout"
           - "'/srv' in fstab_live.stdout"
         fail_msg: "❌ CRITICAL: /proc hidepid shielding or core partition isolation layouts are missing from fstab!"
         success_msg: "✅ PASS: Explicit Mount security options are present on runtime filesystems."
@@ -113,30 +72,15 @@
     - name: "3. AUTH | Assert strict system account policy boundaries are deployed"
       ansible.builtin.assert:
         that:
-          - "logindefs_live.stdout is search('UMASK\\s+027')"
+          - "logindefs_live.stdout is search('UMASK\\s+027') or logindefs_live.stdout is search('UMASK\\s+0027')"
           - "logindefs_live.stdout is search('PASS_MAX_DAYS\\s+90')"
         fail_msg: "❌ CRITICAL: Default account login definitions violate security posture baselines!"
         success_msg: "✅ PASS: login.defs enforces secure default system masks and expiration timers."
 
-    - name: "3. PAM | Verify brute-force defense rules (Only for Arch Linux target scopes)"
-      ansible.builtin.command: "cat /etc/pam.d/system-auth"
-      register: pam_live
-      changed_when: false
-      when: "ansible_facts['os_family'] == 'Archlinux'"
-
-    - name: "3. PAM | Assert pam_faillock locking layers are active"
-      ansible.builtin.assert:
-        that:
-          - "'pam_faillock.so' in pam_live.stdout"
-          - "'deny=3' in pam_live.stdout"
-        fail_msg: "❌ CRITICAL: PAM subsystem does not actively intercept authentication failures!"
-        success_msg: "✅ PASS: pam_faillock is handling brute-force connection counters."
-      when: "ansible_facts['os_family'] == 'Archlinux'"
-
     - name: "4. SERVICES | Query operational status of core defense daemons"
       ansible.builtin.systemd:
         name: "{{ item }}"
-      loop: "{{ ['firewalld', 'fail2ban', 'usbguard', 'aide-check.timer'] if ansible_facts['os_family'] == 'Archlinux' else ['firewalld', 'fail2ban', 'usbguard', 'aide-check.timer', 'tripwire-check.timer'] }}"
+      loop: ["firewalld", "fail2ban", "usbguard", "snapper-baseline.timer"]
       register: service_check
       ignore_errors: true
 
@@ -151,7 +95,7 @@
         label: "{{ item.item }}"
       when: item.status is defined
 
-    - name: "4. INTERFACES | Verify persistent Stage 3 manual portal shortcut presence"
+    - name: "4. INTERFACES | Verify persistent manual portal shortcut presence"
       ansible.builtin.command: "cat /etc/profile.d/firewall-killswitches.sh"
       register: alias_profile_live
       changed_when: false

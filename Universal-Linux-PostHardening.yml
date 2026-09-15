@@ -26,47 +26,22 @@
 
     use_hybrid_zram: "{{ ansible_facts['memtotal_mb'] | int <= 16384 }}"
     use_earlyoom: "{{ ansible_facts['memtotal_mb'] | int < 6144 if 'memtotal_mb' in ansible_facts else true }}"
+
   tasks:
-    - name: "Ingest multi-distribution security baseline mappings file"
+    - name: "PREFLIGHT | Ingest multi-distribution security baseline mappings file"
       ansible.builtin.include_vars:
         file: "vars_mapping.yml"
         name: "distro_blueprint"
 
-    - name: "Map host platform validation variables for Arch Linux"
+    - name: "PREFLIGHT | Map host platform validation variables based on distro"
       ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.arch_vars }}"
-      when: "ansible_facts['os_family'] == 'Archlinux'"
-
-    - name: "Map host platform validation variables for Debian"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.debian_vars }}"
-      when: "ansible_facts['os_family'] == 'Debian'"
-
-    - name: "Map host platform validation variables for Fedora (RedHat)"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.fedora_vars }}"
-      when: "ansible_facts['os_family'] == 'RedHat'"
-
-    - name: "Map host platform validation variables for openSUSE (Suse)"
-      ansible.builtin.set_fact:
-        target_env: "{{ distro_blueprint.suse_vars }}"
-      when: "ansible_facts['os_family'] == 'Suse'"
-    - name: "SWAP DETECT | Query kernel swap tables natively"
-      ansible.builtin.shell: "swapon --show=TYPE | grep -q 'partition' && echo 'true' || echo 'false'"
-      register: raw_swap_type_check
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: "SWAP DETECT | Establish system block partition evaluation booleans"
-      ansible.builtin.set_fact:
-        has_swap_partition: "{{ raw_swap_type_check.stdout | default('false') | bool }}"
-
-    - name: "PREFLIGHT | Install libpwquality to guarantee PAM stability"
-      ansible.builtin.package:
-        name: "libpwquality"
-        state: "present"
-      when: "ansible_facts['os_family'] == 'Archlinux'"
+        target_env: >-
+          {{
+            distro_blueprint.arch_vars if ansible_facts['os_family'] == 'Archlinux' else
+            distro_blueprint.debian_vars if ansible_facts['os_family'] == 'Debian' else
+            distro_blueprint.fedora_vars if ansible_facts['os_family'] == 'RedHat' else
+            distro_blueprint.suse_vars
+          }}
 
     - name: "PREFLIGHT | Deploy baseline core defensive software profiles"
       ansible.builtin.package:
@@ -74,6 +49,7 @@
         state: "present"
         update_cache: true
       when: "target_env.core_packages is defined and not ansible_check_mode"
+
     - name: "GPU RECON | Scan local host physical PCI bus for discrete graphics controllers"
       ansible.builtin.shell: "cat /sys/bus/pci/devices/*/vendor"
       register: pci_vendor_dump
@@ -84,6 +60,7 @@
       ansible.builtin.set_fact:
         has_nvidia: "{{ '0x10de' in pci_vendor_dump.stdout | default('') }}"
         has_amd: "{{ '0x1002' in pci_vendor_dump.stdout | default('') or '0x1022' in pci_vendor_dump.stdout | default('') }}"
+
     - name: "GPU PROVISION | Execute proprietary graphic stack deployments for NVIDIA hardware"
       ansible.builtin.package:
         name: >-
@@ -100,28 +77,10 @@
         - "is_workstation | bool"
         - "not ansible_check_mode"
 
-    - name: "GPU PROVISION | Execute open-source acceleration deployments for AMD/Radeon hardware"
-      ansible.builtin.package:
-        name: >-
-          {{
-            ['xf86-video-amdgpu', 'mesa', 'lib32-mesa'] if ansible_facts['os_family'] == 'Archlinux' else
-            ['xserver-xorg-video-amdgpu', 'mesa-vulkan-drivers'] if ansible_facts['os_family'] == 'Debian' else
-            ['xorg-x11-drv-amdgpu', 'mesa-vdr-drivers'] if ansible_facts['os_family'] == 'RedHat' else
-            ['xf86-video-amdgpu', 'Mesa-libVA']
-          }}
-        state: "present"
-      become: true
-      when:
-        - "has_amd | bool"
-        - "is_workstation | bool"
-        - "not ansible_check_mode"
-    # ====================================================================
-    # AUTOMATED DISTRIBUTION-SPECIFIC BTRFS SUBVOLUME PROVISIONING 
-    # ====================================================================
     - name: "STORAGE | Mount top-level Btrfs root partition (ID 5) to staging area"
       ansible.posix.mount:
         path: "/mnt/btrfs_root"
-        src: "/dev/mapper/cryptroot"
+        src: "/dev/disk/by-uuid/{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='uuid') | first }}"
         fstype: "btrfs"
         opts: "rw,noatime,subvolid=5"
         state: "mounted"
@@ -134,30 +93,32 @@
       become: true
       changed_when: false
       when: "not ansible_check_mode"
+
     - name: "STORAGE | Dynamically forge missing subvolume nodes on ID 5 root tree"
       ansible.builtin.command: "btrfs subvolume create /mnt/btrfs_root/{{ item.name }}"
-      loop: "{{ target_env.subvolumes_map }}"
+      loop: "{{ target_env.subvolumes }}"
       become: true
       when: 
         - "not ansible_check_mode"
-        - "target_env.subvolumes_map is defined"
+        - "target_env.subvolumes is defined"
         - "item.name != '@' and item.name != '@rootfs' and item.name != 'root'"
         - "item.name not in live_subvol_check.stdout"
       register: subvolumes_created
+
     - name: "STORAGE | Secure existing directory data states before remount triggers"
       ansible.builtin.shell: |
         if [ -d "{{ item.dest }}" ] && [ "$(ls -A {{ item.dest }} 2>/dev/null)" ]; then
-          mkdir -p /mnt/target_subvol && \
-          mount -t btrfs -o rw,{{ perf_mount_opts }},subvol={{ item.name }} /dev/mapper/cryptroot /mnt/target_subvol && \
-          rsync -aHAX {{ item.dest }}/ /mnt/target_subvol/ && \
-          umount /mnt/target_subvol && \
+          mkdir -p /mnt/target_subvol
+          mount -t btrfs -o rw,{{ perf_mount_opts }},subvol={{ item.name }} /dev/mapper/cryptroot /mnt/target_subvol
+          rsync -aHAX {{ item.dest }}/ /mnt/target_subvol/
+          umount /mnt/target_subvol
           rm -rf {{ item.dest }}/*
         fi
-      loop: "{{ target_env.subvolumes_map }}"
+      loop: "{{ target_env.subvolumes }}"
       become: true
       when: 
         - "not ansible_check_mode"
-        - "target_env.subvolumes_map is defined"
+        - "target_env.subvolumes is defined"
         - "item.name != '@' and item.name != '@rootfs' and item.name != 'root'"
         - "subvolumes_created.changed"
 
@@ -167,29 +128,17 @@
         state: "absent"
       become: true
       when: "not ansible_check_mode"
-    - name: "STORAGE | Secure existing directory data states before remount triggers"
-      ansible.builtin.shell: |
-        if [ -d "{{ item.dest }}" ] && [ "$(ls -A {{ item.dest }} 2>/dev/null)" ]; then
-          mkdir -p /mnt/target_subvol && \
-          mount -t btrfs -o rw,{{ perf_mount_opts }},subvol={{ item.name }} /dev/mapper/cryptroot /mnt/target_subvol && \
-          rsync -aHAX {{ item.dest }}/ /mnt/target_subvol/ && \
-          umount /mnt/target_subvol && \
-          rm -rf {{ item.dest }}/*
-        fi
-      loop: "{{ target_env.subvolumes_map }}"
-      become: true
-      when: 
-        - "not ansible_check_mode"
-        - "target_env.subvolumes_map is defined"
-        - "item.name != '@' and item.name != '@rootfs' and item.name != 'root'"
-        - "subvolumes_created.changed"
+    - name: "SWAP DETECT | Query kernel swap tables natively"
+      ansible.builtin.shell: "swapon --show=TYPE | grep -q 'partition' && echo 'true' || echo 'false'"
+      register: raw_swap_type_check
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
-    - name: "STORAGE | Safely teardown staging area mount allocations"
-      ansible.posix.mount:
-        path: "/mnt/btrfs_root"
-        state: "absent"
-      become: true
-      when: "not ansible_check_mode"
+    - name: "SWAP DETECT | Establish system block partition evaluation booleans"
+      ansible.builtin.set_fact:
+        has_swap_partition: "{{ raw_swap_type_check.stdout | default('false') | bool }}"
+
     - name: "HARDENING | Mount Btrfs parent swap subvolume tree safely to unblock file allocation"
       ansible.posix.mount:
         path: "/swap"
@@ -218,8 +167,7 @@
       when: "not has_swap_partition | bool"
 
     - name: "HARDENING | Dynamically forge or resize physical swap file"
-      ansible.builtin.command: >
-        dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }}
+      ansible.builtin.command: "dd if=/dev/zero of=/swap/swapfile bs=1M count={{ calculated_swap_mb }} status=progress"
       become: true
       when: >
         not has_swap_partition | bool and
@@ -227,12 +175,23 @@
         (not swapfile_stat.stat.exists or swapfile_stat.stat.size != (calculated_swap_mb | int * 1024 * 1024))
       register: swapfile_allocated
 
+    - name: "HARDENING | Ensure physical swap file path exists"
+      ansible.builtin.file:
+        path: "/swap/swapfile"
+        state: "touch"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+      become: true
+      when: "not has_swap_partition | bool"
+
     - name: "HARDENING | Format and secure physical swap file structures"
       ansible.builtin.file:
         path: "/swap/swapfile"
         owner: "root"
         group: "root"
         mode: "0600"
+        state: "touch"
       become: true
       when: "not has_swap_partition | bool"
 
@@ -242,13 +201,12 @@
       when: 
         - "not has_swap_partition | bool"
         - "swapfile_allocated.changed and not ansible_check_mode"
+    
+    - name: "LOGGING | Output calculated system swap file deployment metrics"
+      ansible.builtin.debug:
+        msg: "========================================================\n[✔] SUCCESS: Swap file created -> Size: {{ (calculated_swap_mb | int / 1024) | round(1) }} GB ({{ calculated_swap_mb }} MB)\n========================================================"
+      when: "not has_swap_partition | bool"
 
-    - name: "Force internal playbook handlers execution to initialize active memory states"
-      ansible.builtin.meta: flush_handlers
-
-    # ====================================================================
-    # AUTOMATED BTRFS TIMELINE RECOVERY TIMERS (SNAPPER TWICE-A-DAY ENGINE)
-    # ====================================================================
     - name: "SNAPPER | Check if root config file physically exists"
       ansible.builtin.stat:
         path: "/etc/snapper/configs/root"
@@ -291,10 +249,19 @@
       notify: "Reload Systemd Configuration"
       become: true
 
-    - name: "FLUSH | Force immediate systemd configuration tracking reload"
-      ansible.builtin.meta: flush_handlers
+    - name: "SNAPPER | Deploy distribution pre/post package manager terminal hook utilities"
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        owner: "root"
+        group: "root"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - { dest: "/etc/apt/apt.conf.d/80snapper", mode: "0644", content: "DPkg::Pre-Invoke {\"snapper create --type pre --print-number --description 'APT Upgrade/Install Operation Initiation' > /tmp/snapper-apt-num || true\";};\nDPkg::Post-Invoke {\"[ -f /tmp/snapper-apt-num ] && snapper create --type post --pre-number=$(cat /tmp/snapper-apt-num) --description 'APT Upgrade/Install Operation Conclusion' && rm -f /tmp/snapper-apt-num || true\";};", condition: "Debian" }
+        - { dest: "/usr/libexec/dnf/plugins/snapper_hook.py", mode: "0755", content: "from dnfpluginscore import DnfPlugin\nclass SnapperHook(DnfPlugin):\n name='snapper_hook'\n def __init__(self, base, cli):\n  super(SnapperHook, self).__init__(base, cli)\n  self.pre_num = None\n def pre_transaction(self):\n  import subprocess\n  try: self.pre_num = subprocess.check_output(['snapper', 'create', '--type', 'pre', '--print-number', '--description', 'DNF Core Package Modification Loop']).strip().decode()\n  except: pass\n def post_transaction(self):\n  import subprocess\n  if self.pre_num:\n   try: subprocess.call(['snapper', 'create', '--type', 'post', '--pre-number', self.pre_num, '--description', 'DNF Core Package Modification End'])\n   except: pass", condition: "RedHat" }
+      when: "ansible_facts['os_family'] == item.condition and not ansible_check_mode"
 
-    - name: "SNAPPER | Enable background snapshot daemon tracking states"
+    - name: "SNAPPER | Synchronize GRUB recovery system menus daemon"
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: "started"
@@ -303,13 +270,95 @@
         - "snapper-baseline.timer"
         - "snapper-timeline.timer"
         - "snapper-cleanup.timer"
+        - "{{ 'grub-btrfsd' if ansible_facts['os_family'] != 'Suse' else 'snapper' }}"
       become: true
       ignore_errors: "{{ ansible_check_mode }}"
-      when: "not (ansible_check_mode and item == 'snapper-baseline.timer')"
 
-    # ====================================================================
-    # HARDENED STORAGE ARCHITECTURE PROFILE ENFORCEMENT (/etc/fstab)
-    # ====================================================================
+    - name: "ELEVATION | Enforce explicit privilege elevation layout definitions"
+      ansible.builtin.copy:
+        content: "{{ target_username | default('vega') }} ALL=(ALL:ALL) ALL"
+        dest: "/etc/sudoers.d/{{ target_username | default('vega') }}"
+        owner: "root"
+        group: "root"
+        mode: "0440"
+        validate: "visudo -cf %s"
+      become: true
+    - name: "VAULT ENGINE | Construct automated multi-layer binary wrapper utilities"
+      ansible.builtin.copy:
+        dest: "/usr/bin/vault"
+        content: |
+          #!/usr/bin/env bash
+          # High-Security Universal Cross-Distribution Vault Automation Management Utility
+          set -e
+          VAULT_DEV="/dev/mapper/secure_vault"
+          VAULT_MOUNT="/vault"
+          PART_TARGET=$(blkid -t TYPE=crypto_LUKS -o device | grep -E '(3|2)$' | head -n 1)
+
+          if [ "$EUID" -ne 0 ]; then
+              echo "[-] ERROR: This secure data wrapper requires root context elevation. Invoke via sudo." >&2
+              exit 1
+          fi
+
+          case "$1" in
+              open)
+                  if mountpoint -q "$VAULT_MOUNT"; then
+                      echo "[*] NOTICE: High-security detached storage vault space is ALREADY open and mounted."
+                      exit 0
+                  fi
+                  echo "[+] Unlocking Argon2id encrypted partition wrapper tracking sectors..."
+                  cryptsetup open "$PART_TARGET" secure_vault --key-file /etc/secure/vault.key
+                  echo "[+] Mounting isolated Btrfs subvolume nodes to path parameters..."
+                  mkdir -p "$VAULT_MOUNT"
+                  mount -o rw,noatime,compress=zstd:1,subvol=@secure "$VAULT_DEV" "$VAULT_MOUNT"
+                  echo "[✔] Success: Hidden vault parameters are armed and accessible at $VAULT_MOUNT"
+                  ;;
+              close)
+                  if ! mountpoint -q "$VAULT_MOUNT"; then
+                      echo "[*] NOTICE: Vault boundary path parameters are already verified unmounted."
+                      if [ -e "$VAULT_DEV" ]; then cryptsetup close secure_vault; fi
+                      exit 0
+                  fi
+                  echo "[+] Flushing residual storage allocation tracks from disk queues..."
+                  sync
+                  umount -l "$VAULT_MOUNT"
+                  echo "[+] Purging active hardware decryption keys from volatile memory loops..."
+                  cryptsetup close secure_vault || true
+                  echo "[✔] Success: Cryptographic data vault container successfully sealed."
+                  ;;
+              *)
+                  echo "Usage: vault {open|close}" >&2
+                  exit 1
+                  ;;
+          esac
+        owner: "{{ target_username | default('vega') }}"
+        group: "{{ target_env.admin_group | default('wheel') }}"
+        mode: "0750"
+      become: true
+
+    - name: "VAULT ENGINE | Map structural non-login shortcuts and environment aliases"
+      ansible.builtin.copy:
+        dest: "/etc/profile.d/vault-shortcuts.sh"
+        content: |
+          # Automated Data Vault Management Shortcut Mappings
+          alias vault-open="sudo /usr/bin/vault open"
+          alias vault-close="sudo /usr/bin/vault close"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      become: true
+
+    - name: "VAULT ENGINE | Append global environment sourcing configuration hooks"
+      ansible.builtin.blockinfile:
+        path: "/etc/bash.bashrc"
+        marker: "# {mark} ANSIBLE MANAGED VAULT ALIASES"
+        block: |
+          if [ -f /etc/profile.d/vault-shortcuts.sh ]; then . /etc/profile.d/vault-shortcuts.sh; fi
+        create: true
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      become: true
+
     - name: "HARDENING | Commit zero-trust filesystem layouts directly to fstab"
       ansible.posix.mount:
         path: "{{ item.dest }}"
@@ -320,9 +369,9 @@
         passno: "0"
         state: "present"
       become: true
-      loop: "{{ target_env.subvolumes_map }}"
+      loop: "{{ target_env.subvolumes }}"
       when: 
-        - "target_env.subvolumes_map is defined"
+        - "target_env.subvolumes is defined"
         - "item.dest != '/swap' and item.dest != '/'"
 
     - name: "HARDENING | Commit specialized zero-trust transient and virtual mount structures"
@@ -342,20 +391,6 @@
         - { path: "/proc", src: "proc", fstype: "proc", opts: "remount,defaults,nosuid,nodev,noexec,hidepid=2,gid=26" }
         - { path: "none", src: "/swap/swapfile", fstype: "swap", opts: "defaults,pri=10,discard,nodev,nosuid,noexec" }
       when: "not has_swap_partition | bool"
-
-    - name: "HARDENING | Commit zero-trust swap partition parameters (If partition found)"
-      ansible.posix.mount:
-        path: "none"
-        src: "{{ ansible_facts.swapdevices.device if (ansible_facts.swapdevices is defined and ansible_facts.swapdevices | length > 0) else 'none' }}"
-        fstype: "swap"
-        opts: "defaults,pri=10,discard,nodev,nosuid,noexec"
-        dump: "0"
-        passno: "0"
-        state: "present"
-      become: true
-      when: 
-        - "has_swap_partition | bool"
-        - "ansible_facts.swapdevices is defined"
 
     - name: "HARDENING | Deploy personal kernel hardening sysctl drop-in"
       ansible.builtin.copy:
@@ -377,17 +412,13 @@
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-tuning.conf"
         content: |
-          # Automatically optimized via hardware-tier matrix rules
           {% if ansible_facts['memtotal_mb'] | int <= 7168 %}
-          # Tier 1: 7GB or less (Aggressive ZRAM Offloading Profile)
           vm.swappiness = 150
           vm.page_cluster = 0
           {% elif ansible_facts['memtotal_mb'] | int <= 16384 %}
-          # Tier 2: 8GB to 16GB (Balanced Desktop Hybrid Profile)
           vm.swappiness = 100
           vm.page_cluster = 0
           {% else %}
-          # Tier 3: Greater than 16GB (Standard Storage Swap Only Profile)
           vm.swappiness = 10
           vm.page_cluster = 3
           {% endif %}
@@ -412,9 +443,6 @@
       become: true
       notify: "Reload Kernel Parameters"
 
-    # ====================================================================
-    # AUTOMATED ENDPOINT SECURITY (FAIL2BAN & USBGUARD)
-    # ====================================================================
     - name: "ENDPOINT SECURITY | Deploy Fail2ban and USBGuard"
       ansible.builtin.package:
         name:
@@ -456,6 +484,7 @@
         state: "present"
       become: true
       notify: "Restart ClamAV Freshclam Service"
+      ignore_errors: true
 
     - name: "Verify that the firewalld management utility is active and initialized"
       ansible.builtin.systemd:
@@ -473,12 +502,8 @@
         - "fail2ban"
         - "usbguard"
         - "sysstat"
-        - "{{ 'clamav-freshclam' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else 'freshclam' }}"
       become: true
 
-    # ====================================================================
-    # DUAL-KILL SWITCH WORKFLOW (STAGES 1, 2, & 3)
-    # ====================================================================
     - name: "Permanently assign standard virtual tunnel interfaces to trusted zones"
       ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --add-interface={{ item }}"
       loop:
@@ -502,36 +527,8 @@
         - "not ansible_check_mode"
         - "is_workstation | bool"
 
-    - name: "STAGE 3 | Deploy dynamic shell script for manual cross-distro toggle overrides"
-      ansible.builtin.copy:
-        dest: "/etc/profile.d/firewall-killswitches.sh"
-        content: |
-          # Universal Cross-Distribution Firewalld Dual Kill-Switch Logic
-          ACTIVE_NET=$(ls /sys/class/net | grep -E '^(wlan|wl)' | head -n 1)
-          if [ -z "$ACTIVE_NET" ]; then ACTIVE_NET=$(ip route | grep default | awk '{print $5}' | head -n 1); fi
-          if [ ! -z "$ACTIVE_NET" ]; then
-              alias portaloff="sudo firewall-cmd --zone=public --change-interface=$ACTIVE_NET && echo '⚠️ Protection OFF: Captive Portal mode enabled.'"
-              alias portalon="sudo firewall-cmd --zone=block --change-interface=$ACTIVE_NET && echo '🔒 Protection ON: Locked back to block zone.'"
-          fi
-        owner: "root"
-        group: "root"
-        mode: "0644"
-      become: true
-
-    - name: "STAGE 3 | Force global non-login shells to source firewall kill-switches system-wide"
-      ansible.builtin.blockinfile:
-        path: "/etc/bash.bashrc"
-        marker: "# {mark} ANSIBLE MANAGED FIREWALL SHORTCUTS"
-        block: |
-          if [ -f /etc/profile.d/firewall-killswitches.sh ]; then . /etc/profile.d/firewall-killswitches.sh; fi
-        create: true
-        owner: "root"
-        group: "root"
-        mode: "0644"
-      become: true
     - name: "HARDENING | Enforce explicit legal compliance warning banner text"
       ansible.builtin.copy:
-        dest: "/etc/issue.net"
         content: |
           ***************************************************************************
           *                           NOTICE TO USERS                               *
@@ -542,6 +539,7 @@
           * prohibited and may be subject to criminal and civil penalties.          *
           *                                                                         *
           ***************************************************************************
+        dest: "/etc/issue.net"
         owner: "root"
         group: "root"
         mode: "0644"
@@ -561,19 +559,8 @@
         name: "usbguard"
         state: "restarted"
 
-    - name: "Restart Earlyoom Daemon"
-      ansible.builtin.systemd:
-        name: "earlyoom"
-        state: "restarted"
-
     - name: "Restart ClamAV Freshclam Service"
       ansible.builtin.systemd:
         name: "{{ 'clamav-freshclam' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else 'freshclam' }}"
         state: "restarted"
-
-    - name: "Force Active ZRAM Initialization"
-      ansible.builtin.systemd:
-        name: "systemd-zram-setup@zram0"
-        state: "restarted"
-      failed_when: false
 

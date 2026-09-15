@@ -1,13 +1,11 @@
 # vars_mapping.yml
-# Universal Cross-Distribution Variable Mapping Matrix
-
+---
 arch_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis"]
+  admin_group: "wheel"
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snap-pac", "git", "make", "aide", "rsync"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
-  audit_rules_path: "/etc/audit/rules.d/audit.rules"
-  clamav_service: "clamav-freshclam"
-  subvolumes_map:
+  subvolumes:
     - { name: "@", dest: "/" }
     - { name: "@home", dest: "/home" }
     - { name: "@swap", dest: "/swap" }
@@ -19,12 +17,11 @@ arch_vars:
     - { name: "@srv", dest: "/srv" }
 
 debian_vars:
-  core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon", "sysstat", "lynis", "aide", "tripwire"]
+  admin_group: "sudo"
+  core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon", "clamav-freshclam", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
   zram_conf_path: "/etc/default/zram-init"
   login_defs_path: "/etc/login.defs"
-  audit_rules_path: "/etc/audit/rules.d/audit.rules"
-  clamav_service: "clamav-daemon"
-  subvolumes_map:
+  subvolumes:
     - { name: "@rootfs", dest: "/" }
     - { name: "@home", dest: "/home" }
     - { name: "@swap", dest: "/swap" }
@@ -33,43 +30,32 @@ debian_vars:
     - { name: "@cache", dest: "/var/cache/apt/archives" }
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@srv", dest: "/srv" }
-
 fedora_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat", "lynis", "aide", "tripwire"]
+  admin_group: "wheel"
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
-  audit_rules_path: "/etc/audit/rules.d/audit.rules"
-  clamav_service: "clamav-freshclam"
-  subvolumes_map:
+  subvolumes:
     - { name: "root", dest: "/" }
     - { name: "home", dest: "/home" }
     - { name: "swap", dest: "/swap" }
     - { name: "snapshots", dest: "/.snapshots" }
     - { name: "log", dest: "/var/log" }
-    - { name: "cache", dest: "/var/cache/dnf5" }
+    - { name: "cache", dest: "/var/cache/dnf" }
     - { name: "containers", dest: "/var/lib/containers" }
-    - { name: "vault", dest: "/vault" }
 
 suse_vars:
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "aide", "tripwire"]
+  admin_group: "wheel"
+  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snapper-plugins", "git", "make", "kernel-default", "grub2-snapper-plugin", "aide", "tripwire", "rsync"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
-  audit_rules_path: "/etc/audit/rules.d/audit.rules"
-  clamav_service: "freshclam"
-  subvolumes_map:
+  subvolumes:
     - { name: "@", dest: "/" }
     - { name: "@snapshots", dest: "/.snapshots" }
     - { name: "@home", dest: "/home" }
-    - { name: "@opt", dest: "/opt" }
-    - { name: "@root", dest: "/root" }
     - { name: "@srv", dest: "/srv" }
-    - { name: "@usr_local", dest: "/usr/local" }
     - { name: "@var_cache", dest: "/var/cache" }
-    - { name: "@var_crash", dest: "/var/crash" }
     - { name: "@var_log", dest: "/var/log" }
-    - { name: "@var_spool", dest: "/var/spool" }
-    - { name: "@var_tmp", dest: "/var/tmp" }
     - { name: "@swap", dest: "/swap" }
-    - { name: "@secure", dest: "/vault" }
     - { name: "@docker", dest: "/var/lib/docker" }
 
