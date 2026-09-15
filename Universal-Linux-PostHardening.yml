@@ -1,7 +1,7 @@
 ---
 - name: "Universal Zero-Trust Linux Hardening Framework (Stage 2 - Fully Integrated Post-Hardening Core)"
   hosts: "localhost"
-  connection: "local"
+  connection: "smart"
   become: true  
   gather_facts: true
   gather_subset:
@@ -21,6 +21,7 @@
         (ansible_facts['memtotal_mb'] | int + 3072) if (ansible_facts['memtotal_mb'] | int > 7168 and ansible_facts['memtotal_mb'] | int <= 16384) else
         4096
       }}
+
   tasks:
     # =========================================================================
     # PREFLIGHT INGESTION & ADVANCED RECONNAISSANCE
@@ -76,7 +77,6 @@
         has_swap_file: "{{ 'file' in active_swap_matrix.stdout }}"
         root_device: "{{ root_source_device.stdout | trim }}"
         has_secure_vault: "{{ root_fstype.stdout | trim == 'btrfs' and 'subvol=@secure' in live_btrfs_subvols.stdout | default('') }}"
- 
     # =========================================================================
     # ENDPOINT PROTECTION | CORE SECURITY PACKAGES PROVISIONING
     # =========================================================================
@@ -124,6 +124,7 @@
         - "item.name != '@' and item.name != '@rootfs' and item.name != 'root'"
         - "item.dest != '/.snapshots'"
         - "not ansible_check_mode"
+
     # =========================================================================
     # CROSS-DISTRIBUTION SNAPSHOTS & SWAPFILE PROVISIONING CORE
     # =========================================================================
@@ -321,10 +322,7 @@
         create: true
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
- 
-    # =========================================================================
-    # AIDE TIMERS, ROLE-BASED HARDENING, DUAL KILLSWITCHES & HANDLERS
-    # =========================================================================
+
     - name: "AIDE | Locate distribution-specific configuration paths"
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -384,6 +382,65 @@
         - { name: "aide-check.timer", content: "[Unit]\nDescription=Trigger Automated System Integrity Scan Daily at 3AM\n\n[Timer]\nOnCalendar=*-*-* 03:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
       notify: "Reload Active Systemd Core"
 
+    # =========================================================================
+    # ADVANCED ZERO-TRUST IMMUTABLE AUDITING CORE (INTEGRATED ADVANCED UPGRADE)
+    # =========================================================================
+    - name: "AUDITD | Enforce optimized local data management rotations parameters"
+      ansible.builtin.lineinfile:
+        path: "/etc/audit/auditd.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: "present"
+      loop:
+        - { regexp: "^max_log_file\\s+=", line: "max_log_file = 50" }
+        - { regexp: "^max_log_file_action\\s+=", line: "max_log_file_action = ROTATE" }
+        - { regexp: "^space_left_action\\s+=", line: "space_left_action = SYSLOG" }
+        - { regexp: "^admin_space_left_action\\s+=", line: "admin_space_left_action = SUSPEND" }
+      when: "not ansible_check_mode"
+
+    - name: "AUDITD | Clean conflicting pre-existing default tracking blueprints"
+      ansible.builtin.file:
+        path: "/etc/audit/rules.d/audit.rules"
+        state: "absent"
+      when: "not ansible_check_mode"
+
+    - name: "AUDITD | Deploy un-falsifiable zero-trust kernel logging rules matrix"
+      ansible.builtin.copy:
+        dest: "/etc/audit/rules.d/audit.rules"
+        content: |
+          -D
+          -b 8192
+          -f 2
+
+          # 1. TRACK HIGH-SECURITY CREDENTIAL & PRIVILEGE LEDGER MUTATIONS
+          -w /etc/group -p wa -k security_credentials
+          -w /etc/passwd -p wa -k security_credentials
+          -w /etc/shadow -p wa -k security_credentials
+          -w /etc/sudoers -p wa -k security_privileges
+          -w /etc/sudoers.d/ -p wa -k security_privileges
+
+          # 2. MONITOR FILE SYSTEM MOUNT & CRYPTOGRAPHIC LEDGER RECONCILIATIONS
+          -w /etc/fstab -p wa -k filesystem_ledgers
+          -w /etc/crypttab -p wa -k filesystem_ledgers
+
+          # 3. INTERCEPT DYNAMIC PRIVILEGE TRANSLATIONS & ESCALATION ACTIONS
+          -a always,exit -F arch=b64 -S chmod -S fchmod -S fchmodat -F auid>=1000 -F auid!=4294967295 -k privilege_escalation
+          -a always,exit -F arch=b32 -S chmod -S fchmod -S fchmodat -F auid>=1000 -F auid!=4294967295 -k privilege_escalation
+          -a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=4294967295 -k process_execution
+          -a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=4294967295 -k process_execution
+
+          # 4. TRACK SYSTEM DEFENSE APPLICATION CONTAINER MODIFICATIONS
+          -w /etc/usbguard/rules.conf -p wa -k peripheral_security
+          -w /etc/aide.conf -p wa -k integrity_monitoring
+          -w /etc/aide/aide.conf -p wa -k integrity_monitoring
+
+          # 5. ABSOLUTE ADVANCED ZERO-TRUST KERNEL HARDENING LOCKRULE (-e 2)
+          -e 2
+        owner: "root"
+        group: "root"
+        mode: "0600"
+      when: "not ansible_check_mode"
+      notify: "Reload Active Systemd Core"
     - name: "HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-hardening.conf"
@@ -417,7 +474,7 @@
         name: "{{ item }}"
         state: "started"
         enabled: true
-      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer"]
+      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "auditd"]
       failed_when: false
 
     - name: "FIREWALL RECON | Dynamically discover physical hardware adapter interfaces"
@@ -475,7 +532,7 @@
         name: "snapper-posthardening.timer"
         state: "started"
         enabled: true
-      when: "not ansible_check_mode" # <-- ADD THIS PERMANENT FLAG HERE
+      when: "not ansible_check_mode"
 
     - name: "SNAPPER | Verify standard distribution timeline schedules are safely managed"
       ansible.builtin.systemd:
@@ -485,9 +542,7 @@
       loop:
         - "snapper-cleanup.timer"
       failed_when: false
-      when: "not ansible_check_mode" # <-- ADD THIS PERMANENT FLAG HERE TOO
-
-
+      when: "not ansible_check_mode"
   handlers:
     - name: "Trigger Active System Kernel Flush"
       ansible.builtin.command: "sysctl --system"

@@ -1,0 +1,202 @@
+ ansible-playbook -i hosts.ini Universal-Linux-PostHardening.yml --check -K
+BECOME password: 
+
+PLAY [Universal Zero-Trust Linux Hardening Framework (Stage 2 - Fully Integrated Post-Hardening Core)] ****************************************************************
+
+TASK [Gathering Facts] ************************************************************************************************************************************************
+ok: [localhost]
+
+TASK [PREFLIGHT | Ingest multi-distribution security baseline mappings file] ******************************************************************************************
+ok: [localhost]
+
+TASK [PREFLIGHT | Map host platform validation variables based on distro] *********************************************************************************************
+ok: [localhost]
+
+TASK [RECON | Track active kernel execution swap maps] ****************************************************************************************************************
+ok: [localhost]
+
+TASK [RECON | Discover underlying disk backing device maps for root] **************************************************************************************************
+ok: [localhost]
+
+TASK [RECON | Check root filesystem type allocation] ******************************************************************************************************************
+ok: [localhost]
+
+TASK [RECON | Query live subvolumes from backing Btrfs pool] **********************************************************************************************************
+skipping: [localhost]
+
+TASK [RECON | Evaluate active storage architecture state criteria] ****************************************************************************************************
+ok: [localhost]
+
+TASK [SECURITY CORE | Deploy localized baseline defensive software profiles] ******************************************************************************************
+skipping: [localhost]
+
+TASK [BTRFS | Forge missing core subvolume structure targets natively] ************************************************************************************************
+skipping: [localhost] => (item={'name': '@', 'dest': '/'}) 
+skipping: [localhost] => (item={'name': '@home', 'dest': '/home'}) 
+skipping: [localhost] => (item={'name': '@swap', 'dest': '/swap'}) 
+skipping: [localhost] => (item={'name': '@snapshots', 'dest': '/.snapshots'}) 
+skipping: [localhost] => (item={'name': '@log', 'dest': '/var/log'}) 
+skipping: [localhost] => (item={'name': '@cache', 'dest': '/var/cache/pacman/pkg'}) 
+skipping: [localhost] => (item={'name': '@docker', 'dest': '/var/lib/docker'}) 
+skipping: [localhost] => (item={'name': '@flatpak', 'dest': '/var/lib/flatpak'}) 
+skipping: [localhost] => (item={'name': '@srv', 'dest': '/srv'}) 
+skipping: [localhost]
+
+TASK [BTRFS | Align discovered subvolumes into static fstab array fields] *********************************************************************************************
+skipping: [localhost] => (item={'name': '@', 'dest': '/'}) 
+skipping: [localhost] => (item={'name': '@home', 'dest': '/home'}) 
+skipping: [localhost] => (item={'name': '@swap', 'dest': '/swap'}) 
+skipping: [localhost] => (item={'name': '@snapshots', 'dest': '/.snapshots'}) 
+skipping: [localhost] => (item={'name': '@log', 'dest': '/var/log'}) 
+skipping: [localhost] => (item={'name': '@cache', 'dest': '/var/cache/pacman/pkg'}) 
+skipping: [localhost] => (item={'name': '@docker', 'dest': '/var/lib/docker'}) 
+skipping: [localhost] => (item={'name': '@flatpak', 'dest': '/var/lib/flatpak'}) 
+skipping: [localhost] => (item={'name': '@srv', 'dest': '/srv'}) 
+skipping: [localhost]
+
+TASK [SNAPPER HARDENING | Enforce Arch and Debian standalone snapshot mappings] ***************************************************************************************
+skipping: [localhost]
+
+TASK [SNAPPER HARDENING | Verify openSUSE nested snapshot mount parameters] *******************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Ensure local subvolume mountpoint path structure exists] ***************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Mount dedicated swap subvolume workspace temporarily] ******************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Verify if a local physical swapfile exists inside volume] **************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Create zero-padded tracking allocation block file if missing] **********************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Apply strict security access masks to swapfile parameters] *************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Initialize swap space filesystem headers] ******************************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Execute hot activation of swap block into memory tables] ***************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP PROVISION | Permanently secure swap target tracking parameters to system fstab] ****************************************************************************
+skipping: [localhost]
+
+TASK [VAULT ENGINE | Construct automated multi-layer binary wrapper utilities] ****************************************************************************************
+skipping: [localhost]
+
+TASK [VAULT ENGINE | Map structural shortcuts and environmental aliases] **********************************************************************************************
+skipping: [localhost]
+
+TASK [USBGUARD | Ensure configuration parent directories exist] *******************************************************************************************************
+changed: [localhost]
+
+TASK [USBGUARD | Dynamically compile live connected peripheral authorization grid] ************************************************************************************
+ok: [localhost]
+
+TASK [USBGUARD | Write safety-validated rule configuration to disk] ***************************************************************************************************
+skipping: [localhost]
+
+TASK [CLAMAV | Ensure database configuration tracking file is verified] ***********************************************************************************************
+changed: [localhost]
+
+TASK [CLAMAV | Enforce custom background database update frequency thresholds] ****************************************************************************************
+skipping: [localhost]
+
+TASK [CLAMAV | Inject custom systemd low-priority cgroup overrides] ***************************************************************************************************
+skipping: [localhost]
+
+TASK [AIDE | Locate distribution-specific configuration paths] ********************************************************************************************************
+ok: [localhost] => (item=/etc/aide/aide.conf)
+ok: [localhost] => (item=/etc/aide.conf)
+
+TASK [AIDE | Map operational destination configuration path fact] *****************************************************************************************************
+ok: [localhost]
+
+TASK [AIDE | Inject custom exclusions for volatile virtual paths] *****************************************************************************************************
+changed: [localhost]
+
+TASK [AIDE | Audit physical presence of a master integrity baseline] **************************************************************************************************
+ok: [localhost]
+
+TASK [AIDE | Initialize secure baseline system database if missing] ***************************************************************************************************
+skipping: [localhost]
+
+TASK [AIDE | Commit baseline database structure to active operational tracking] ***************************************************************************************
+skipping: [localhost]
+
+TASK [AIDE | Drop custom automated integrity scanning service units] **************************************************************************************************
+changed: [localhost] => (item={'name': 'aide-check.service', 'content': '[Unit]\nDescription=Automated Post-Hardening File Integrity Security Scan\nAfter=local-fs.target network.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/aide --check\nNice=19\nCPUSchedulingPolicy=idle\nIOSchedulingClass=idle'})
+changed: [localhost] => (item={'name': 'aide-check.timer', 'content': '[Unit]\nDescription=Trigger Automated System Integrity Scan Daily at 3AM\n\n[Timer]\nOnCalendar=*-*-* 03:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target'})
+
+TASK [AUDITD | Enforce optimized local data management rotations parameters] ******************************************************************************************
+skipping: [localhost] => (item={'regexp': '^max_log_file\\s+=', 'line': 'max_log_file = 50'}) 
+skipping: [localhost] => (item={'regexp': '^max_log_file_action\\s+=', 'line': 'max_log_file_action = ROTATE'}) 
+skipping: [localhost] => (item={'regexp': '^space_left_action\\s+=', 'line': 'space_left_action = SYSLOG'}) 
+skipping: [localhost] => (item={'regexp': '^admin_space_left_action\\s+=', 'line': 'admin_space_left_action = SUSPEND'}) 
+skipping: [localhost]
+
+TASK [AUDITD | Clean conflicting pre-existing default tracking blueprints] ********************************************************************************************
+skipping: [localhost]
+
+TASK [AUDITD | Deploy un-falsifiable zero-trust kernel logging rules matrix] ******************************************************************************************
+skipping: [localhost]
+
+TASK [HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl] *********************************************************************************
+changed: [localhost]
+
+TASK [HARDENING | Secure virtual execution interfaces securely inside fstab storage arrays] ***************************************************************************
+changed: [localhost] => (item={'path': '/tmp', 'src': 'tmpfs', 'fstype': 'tmpfs', 'opts': 'defaults,nosuid,nodev,size=50%'})
+changed: [localhost] => (item={'path': '/dev/shm', 'src': 'tmpfs', 'fstype': 'tmpfs', 'opts': 'defaults,noexec,nosuid,nodev,size=1G'})
+
+TASK [SECURITY SERVICES | Activate and enable baseline security infrastructure daemons] *******************************************************************************
+ok: [localhost] => (item=firewalld)
+ok: [localhost] => (item=fail2ban)
+ok: [localhost] => (item=sysstat)
+ok: [localhost] => (item=usbguard)
+ok: [localhost] => (item=aide-check.timer)
+changed: [localhost] => (item=auditd)
+
+TASK [FIREWALL RECON | Dynamically discover physical hardware adapter interfaces] *************************************************************************************
+ok: [localhost]
+
+TASK [STAGE 1 KILLSWITCH | Force active physical interfaces into block zone permanently] ******************************************************************************
+skipping: [localhost] => (item=ens5) 
+skipping: [localhost] => (item=wls1) 
+skipping: [localhost]
+
+TASK [STAGE 2 & 3 KILLSWITCH | Permanently assign virtual tunnel interfaces to trusted zones] *************************************************************************
+skipping: [localhost] => (item=tun+) 
+skipping: [localhost] => (item=wg+) 
+skipping: [localhost] => (item=proton+) 
+skipping: [localhost]
+
+TASK [FIREWALLD | Deploy global runtime persistence environment script hooks] *****************************************************************************************
+changed: [localhost]
+
+TASK [SNAPPER | Drop custom automated snapshot tracking service units] ************************************************************************************************
+changed: [localhost] => (item={'name': 'snapper-posthardening.service', 'content': '[Unit]\nDescription=Automated Post-Hardening Posture Timeline Snapshot\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/snapper -c root create --type timeline --description "Automated Security Hardening Checkpoint"'})
+changed: [localhost] => (item={'name': 'snapper-posthardening.timer', 'content': '[Unit]\nDescription=Trigger Snapper Timeline Snapshot At Explicit Security Windows\n\n[Timer]\nOnCalendar=*-*-* 00,06,15:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target'})
+
+TASK [SNAPPER | Force explicit timeline schedule timers to enable and activate] ***************************************************************************************
+skipping: [localhost]
+
+TASK [SNAPPER | Verify standard distribution timeline schedules are safely managed] ***********************************************************************************
+skipping: [localhost] => (item=snapper-cleanup.timer) 
+skipping: [localhost]
+
+RUNNING HANDLER [Trigger Active System Kernel Flush] ******************************************************************************************************************
+skipping: [localhost]
+
+RUNNING HANDLER [Reload Firewalld Configuration] **********************************************************************************************************************
+skipping: [localhost]
+
+RUNNING HANDLER [Reload Active Systemd Core] **************************************************************************************************************************
+ok: [localhost]
+
+PLAY RECAP ************************************************************************************************************************************************************
+localhost                  : ok=22   changed=9    unreachable=0    failed=0    skipped=30   rescued=0    ignored=0   
+
+

@@ -37,6 +37,7 @@
         fail_msg: "❌ CRITICAL FAILURE: The running system has no active swap space initialized in kernel memory!"
         success_msg: "✅ PASS: Active swap allocation detected and parsing successfully."
       when: "not ansible_check_mode"
+
     - name: "AUDIT STORAGE | Check persistent partition tracking mappings"
       ansible.builtin.command: "cat /etc/fstab"
       register: fstab_live
@@ -50,6 +51,8 @@
           - "'/dev/shm' in fstab_live.stdout and 'noexec' in fstab_live.stdout"
         fail_msg: "❌ CRITICAL FAILURE: Core partition isolation layouts or memory swap paths are missing from fstab!"
         success_msg: "✅ PASS: Secure mount boundaries verified inside static fstab arrays."
+      when: "not ansible_check_mode"
+
     # =========================================================================
     # KERNEL HARDENING PARAMETERS & CORE SERVICES AUDITING
     # =========================================================================
@@ -66,11 +69,12 @@
           - "'net.ipv4.tcp_syncookies = 1' in sysctl_hardening_file.stdout"
         fail_msg: "❌ CRITICAL FAILURE: Custom kernel-hardening parameters are missing or altered on storage!"
         success_msg: "✅ PASS: Custom security sysctl profile rules verified on disk."
+      when: "not ansible_check_mode"
 
     - name: "AUDIT SERVICES | Query operational status of host security daemons"
       ansible.builtin.systemd:
         name: "{{ item }}"
-      loop: ["firewalld", "fail2ban", "usbguard", "aide-check.timer"]
+      loop: ["firewalld", "fail2ban", "usbguard", "aide-check.timer", "auditd"]
       register: security_service_check
       ignore_errors: true
 
@@ -84,8 +88,9 @@
       loop_control:
         label: "{{ item.item }}"
       when: "item.status is defined"
+
     # =========================================================================
-    # ROLE-BASED DUAL KILLSWITCH PERIMETER AUDITING
+    # ROLE-BASED DUAL KILLSWITCH PERIMETER & KERNEL LOG LOCK AUDITING
     # =========================================================================
     - name: "AUDIT FIREWALL | Discover running network interfaces from kernel space"
       ansible.builtin.shell: "ls /sys/class/net | grep -E '^(wlan|wl|eth|en)'"
@@ -124,22 +129,23 @@
           - "'proton+' in audit_trusted_zone.stdout"
         fail_msg: "❌ CRITICAL KILLSWITCH FAILURE: Virtual VPN bypass tunnel interface configurations are missing from the trusted zone!"
         success_msg: "✅ PASS: Dual Killswitch architecture rules confirmed. Virtual tunnel exceptions are verified open."
+      when: "not ansible_check_mode"
 
     - name: "AUDIT INTERFACES | Verify persistent manual portal toggle shortcut presence"
       ansible.builtin.command: "cat /etc/profile.d/firewall-killswitches.sh"
       register: portal_script_live
       changed_when: false
+      failed_when: false
+      check_mode: no
 
     - name: "AUDIT INTERFACES | Assert captive portal mitigation functions are compiled"
       ansible.builtin.assert:
         that:
-          - "'alias portaloff' in portal_script_live.stdout"
-          - "'alias portalon' in portal_script_live.stdout"
+          - "'alias portaloff' in portal_script_live.stdout or ansible_check_mode"
+          - "'alias portalon' in portal_script_live.stdout or ansible_check_mode"
         fail_msg: "❌ CRITICAL FAILURE: Firewalld dual killswitch wrapper scripts are missing from profile storage boundaries!"
         success_msg: "✅ PASS: Captive portal off/on toggle alias hooks verified successfully."
-    # =========================================================================
-    # AUDIT SNAPPER TIMELINES
-    # =========================================================================
+
     - name: "AUDIT SNAPPER | Verify presence of your custom 3-tier timeline scheduler"
       ansible.builtin.command: "systemctl status snapper-posthardening.timer"
       register: audit_snapper_timer
@@ -151,4 +157,20 @@
           - "'00,06,15:00:00' in audit_snapper_timer.stdout"
         fail_msg: "❌ CRITICAL FAILURE: The custom Snapper 6AM/3PM/Midnight timeline timer has been altered or deactivated!"
         success_msg: "✅ PASS: Custom 3-tier snapshot scheduling matrix verified running."
-      when: "not ansible_check_mode" 
+      when: "not ansible_check_mode"
+
+    - name: "AUDIT STAGE 3 | Query active kernel configuration metrics from auditctl"
+      ansible.builtin.command: "auditctl -s"
+      register: active_audit_status
+      changed_when: false
+      failed_when: false
+      when: "not ansible_check_mode"
+
+    - name: "AUDIT STAGE 3 | Assert un-falsifiable kernel tracking lock is fully armed"
+      ansible.builtin.assert:
+        that:
+          - "'enabled 2' in active_audit_status.stdout"
+        fail_msg: "❌ CRITICAL SECURITY BREACH: The immutable auditd shield is NOT locked (-e 2 failed)!"
+        success_msg: "✅ PASS: Stage 3 Immutable Audit Shield verified locked and running in kernel space."
+      when: "not ansible_check_mode"
+
