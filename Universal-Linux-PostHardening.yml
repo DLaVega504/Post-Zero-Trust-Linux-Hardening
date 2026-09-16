@@ -40,7 +40,6 @@
             distro_blueprint.fedora_vars if ansible_facts['os_family'] == 'RedHat' else
             distro_blueprint.suse_vars
           }}
-
     - name: "RECON | Track active kernel execution swap maps"
       ansible.builtin.shell: "swapon --show=NAME,TYPE --noheadings"
       register: active_swap_matrix
@@ -69,12 +68,21 @@
       failed_when: false
       when: "root_fstype.stdout | trim == 'btrfs'"
 
+    - name: "RECON | Query presence of any LUKS encrypted partition blocks on disk"
+      ansible.builtin.command: "blkid -t TYPE=crypto_LUKS -o device"
+      register: live_luks_devices
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
     - name: "RECON | Evaluate active storage architecture state criteria"
       ansible.builtin.set_fact:
         is_btrfs: "{{ root_fstype.stdout | trim == 'btrfs' }}"
         root_device: "{{ root_source_device.stdout | trim }}"
-        has_secure_vault: "{{ root_fstype.stdout | trim == 'btrfs' and 'subvol=@secure' in live_btrfs_subvols.stdout | default('') }}" # <-- FIXED NAME
-
+        has_secure_vault: >-
+          {{
+            true if ('subvol=@secure' in live_btrfs_subvols.stdout | default('') or live_luks_devices.stdout_lines | length > 0) else false
+          }}
     # =========================================================================
     # ENDPOINT PROTECTION | CORE SECURITY PACKAGES PROVISIONING
     # =========================================================================
@@ -123,9 +131,6 @@
         - "item.dest != '/.snapshots'"
         - "not ansible_check_mode"
 
-    # =========================================================================
-    # CROSS-DISTRIBUTION SNAPSHOTS PROVISIONING CORE
-    # =========================================================================
     - name: "SNAPPER HARDENING | Enforce Arch and Debian standalone snapshot mappings"
       ansible.posix.mount:
         path: "/.snapshots"
@@ -159,7 +164,6 @@
       ansible.builtin.set_fact:
         needs_backing_swapfile: "{{ (current_active_swap_mb | int) < (target_formula_swap_mb | int) }}"
 
-
     - name: "SWAP PROVISION | Ensure local subvolume mountpoint path structure exists"
       ansible.builtin.file:
         path: "/swap"
@@ -172,7 +176,6 @@
     - name: "SWAP PROVISION | Mount dedicated swap subvolume workspace temporarily"
       ansible.posix.mount:
         path: "/swap"
-        # DYNAMIC RECONCILIATION BRANCHING ENGINE
         src: >-
           {{
             '/dev/mapper/root' if ('/dev/mapper/' in root_device or 'root' in root_device) else root_device
@@ -188,9 +191,6 @@
       register: target_swapfile_check
       when: "needs_backing_swapfile | bool"
 
-    # =========================================================================
-    # ADVANCED BTRFS NATIVE SWAPFILE PROVISIONING SUB-ARRAY
-    # =========================================================================
     - name: "SWAP PROVISION | Clear broken or malformed pre-existing swap allocations"
       ansible.builtin.file:
         path: "/swap/swapfile"
@@ -262,7 +262,14 @@
           set -e
           VAULT_DEV="/dev/mapper/secure_vault"
           VAULT_MOUNT="/vault"
-          PART_TARGET=$(blkid -t TYPE=crypto_LUKS -o device | head -n 1)
+          
+          if blkid -t TYPE=crypto_LUKS -o device | grep -q "root"; then
+              PART_TARGET=$(blkid -t TYPE=crypto_LUKS -o device | grep "root" | head -n 1)
+              MOUNT_OPTS="rw,noatime,compress=zstd:1,subvol=@secure"
+          else
+              PART_TARGET=$(blkid -t TYPE=crypto_LUKS -o device | head -n 1)
+              MOUNT_OPTS="rw,noatime,compress=zstd:1"
+          fi
 
           if [ "$EUID" -ne 0 ]; then
               echo "[-] ERROR: This secure data wrapper requires root context elevation. Invoke via sudo." >&2
@@ -275,9 +282,13 @@
                       echo "[*] NOTICE: Storage vault space is ALREADY open and mounted."
                       exit 0
                   fi
+                  if [ -z "$PART_TARGET" ]; then
+                      echo "[-] ERROR: No valid LUKS cryptographic vault target partition detected on this host." >&2
+                      exit 1
+                  fi
                   cryptsetup open "$PART_TARGET" secure_vault --key-file /etc/secure/vault.key
                   mkdir -p "$VAULT_MOUNT"
-                  mount -o rw,noatime,compress=zstd:1,subvol=@secure "$VAULT_DEV" "$VAULT_MOUNT"
+                  mount -o $MOUNT_OPTS "$VAULT_DEV" "$VAULT_MOUNT"
                   ;;
               close)
                   if ! mountpoint -q "$VAULT_MOUNT"; then
@@ -296,6 +307,7 @@
         owner: "root"
         group: "{{ target_env.admin_group | default('wheel') }}"
         mode: "0750"
+      when: "has_secure_vault | bool"
 
     - name: "VAULT ENGINE | Map structural shortcuts and environmental aliases"
       ansible.builtin.copy:
@@ -306,7 +318,7 @@
         owner: "root"
         group: "root"
         mode: "0644"
-
+      when: "has_secure_vault | bool"
     - name: "USBGUARD | Ensure configuration parent directories exist"
       ansible.builtin.file:
         path: "/etc/usbguard"
@@ -382,6 +394,7 @@
         mode: "0644"
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
+
     - name: "AIDE | Locate distribution-specific configuration paths"
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -418,6 +431,11 @@
         path: "{{ '/var/lib/aide/aide.db.gz' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else '/var/lib/aide/aide.db' }}"
       register: active_aide_db_file
 
+    - name: "AIDE | Evict stale background system process locks proactively"
+      ansible.builtin.file:
+        path: "/var/log/aide/aide.log.lock"
+        state: "absent"
+
     - name: "AIDE | Initialize secure baseline system database if missing"
       ansible.builtin.command: "aide --init"
       when: "not active_aide_db_file.stat.exists and not ansible_check_mode"
@@ -443,6 +461,7 @@
         - { name: "aide-check.service", content: "[Unit]\nDescription=Automated Post-Hardening File Integrity Security Scan\nAfter=local-fs.target network.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/aide --check\nNice=19\nCPUSchedulingPolicy=idle\nIOSchedulingClass=idle" }
         - { name: "aide-check.timer", content: "[Unit]\nDescription=Trigger Automated System Integrity Scan Daily at 3AM\n\n[Timer]\nOnCalendar=*-*-* 03:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
       notify: "Reload Active Systemd Core"
+
     # =========================================================================
     # ADVANCED ZERO-TRUST IMMUTABLE AUDITING CORE (INTEGRATED ADVANCED UPGRADE)
     # =========================================================================
@@ -502,7 +521,6 @@
         mode: "0600"
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
-
     - name: "HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-hardening.conf"
