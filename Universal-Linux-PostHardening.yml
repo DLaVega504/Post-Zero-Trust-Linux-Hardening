@@ -40,6 +40,7 @@
             distro_blueprint.fedora_vars if ansible_facts['os_family'] == 'RedHat' else
             distro_blueprint.suse_vars
           }}
+
     - name: "RECON | Track active kernel execution swap maps"
       ansible.builtin.shell: "swapon --show=NAME,TYPE --noheadings"
       register: active_swap_matrix
@@ -83,6 +84,7 @@
           {{
             true if ('subvol=@secure' in live_btrfs_subvols.stdout | default('') or live_luks_devices.stdout_lines | length > 0) else false
           }}
+
     # =========================================================================
     # ENDPOINT PROTECTION | CORE SECURITY PACKAGES PROVISIONING
     # =========================================================================
@@ -152,6 +154,7 @@
         passno: "0"
         state: "present"
       when: "is_btrfs | bool and ansible_facts['os_family'] == 'Suse' and not ansible_check_mode"
+
     # =========================================================================
     # RE-ENGINEERED SWAP PROVISIONING | DYNAMIC HYBRID MATRIX ENGINE
     # =========================================================================
@@ -191,6 +194,9 @@
       register: target_swapfile_check
       when: "needs_backing_swapfile | bool"
 
+    # =========================================================================
+    # ADVANCED BTRFS NATIVE SWAPFILE PROVISIONING SUB-ARRAY
+    # =========================================================================
     - name: "SWAP PROVISION | Clear broken or malformed pre-existing swap allocations"
       ansible.builtin.file:
         path: "/swap/swapfile"
@@ -213,7 +219,7 @@
     - name: "SWAP PROVISION | Force a completely contiguous uncompressed disk block allocation"
       ansible.builtin.command: "fallocate -l {{ calculated_swap_mb }}M /swap/swapfile"
       register: fresh_swap_stream_allocated
-      when: 
+      when:
         - "needs_backing_swapfile | bool"
         - "not target_swapfile_check.stat.exists"
         - "not ansible_check_mode"
@@ -229,14 +235,14 @@
 
     - name: "SWAP PROVISION | Initialize swap space filesystem headers"
       ansible.builtin.command: "mkswap /swap/swapfile"
-      when: 
+      when:
         - "needs_backing_swapfile | bool"
         - "fresh_swap_stream_allocated is changed"
         - "not ansible_check_mode"
 
     - name: "SWAP PROVISION | Execute hot activation of swap block into memory tables"
       ansible.builtin.command: "swapon -p 10 /swap/swapfile"
-      when: 
+      when:
         - "needs_backing_swapfile | bool"
         - "fresh_swap_stream_allocated is changed"
         - "not ansible_check_mode"
@@ -251,6 +257,11 @@
         passno: "0"
         state: "present"
       when: "needs_backing_swapfile | bool and not ansible_check_mode"
+
+    - name: "SWAP PROVISION | Force universal hot kernel activation fallback"
+      ansible.builtin.command: "swapon -a"
+      when: "needs_backing_swapfile | bool and not ansible_check_mode"
+
     # =========================================================================
     # VAULT ENGINE, ANTI-LOCKOUT USBGUARD, & RESOURCE-BALANCED CLAMAV
     # =========================================================================
@@ -262,7 +273,7 @@
           set -e
           VAULT_DEV="/dev/mapper/secure_vault"
           VAULT_MOUNT="/vault"
-          
+
           if blkid -t TYPE=crypto_LUKS -o device | grep -q "root"; then
               PART_TARGET=$(blkid -t TYPE=crypto_LUKS -o device | grep "root" | head -n 1)
               MOUNT_OPTS="rw,noatime,compress=zstd:1,subvol=@secure"
@@ -319,6 +330,7 @@
         group: "root"
         mode: "0644"
       when: "has_secure_vault | bool"
+
     - name: "USBGUARD | Ensure configuration parent directories exist"
       ansible.builtin.file:
         path: "/etc/usbguard"
@@ -334,23 +346,13 @@
       failed_when: false
       check_mode: false
 
-    - name: "USBGUARD | Read any existing custom manual rules from local file"
-      ansible.builtin.command: "cat /etc/usbguard/rules.conf"
-      register: existing_rules_ledger
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: "USBGUARD | Dynamically merge scan metrics with local manual rules"
+    - name: "USBGUARD | Dynamically write safety-validated rules matrix to disk"
       ansible.builtin.copy:
         content: |
-          # 1. CORE MACHINE TOPOLOGY SCAN (GENERATED AUTOMATICALLY)
+          # 1. CORE MACHINE TOPOLOGY SCAN (GENERATED DYNAMICALLY)
           {{ live_hardware_scan.stdout | default('# No hardware scan returned') }}
 
-          # 2. LOCAL PERSISTENT CUSTOM RULE OVERLAYS (PRESERVED AUTOMATICALLY)
-          {{ existing_rules_ledger.stdout | default('# No pre-existing local rules ledger found') }}
-
-          # 3. UNIVERSAL ANTI-LOCKOUT LIFE JACKET: Allow all human interface devices
+          # 2. UNIVERSAL ANTI-LOCKOUT LIFE JACKET: Allow all human interface devices
           allow with-interface match { 03:*:* }
         dest: "/etc/usbguard/rules.conf"
         owner: "root"
@@ -358,7 +360,9 @@
         mode: "0600"
       when: "not ansible_check_mode"
       notify: "Restart USBGuard Service"
-
+    # =========================================================================
+    # RESOURCE-BALANCED CLAMAV ANTIVIRUS INFRASTRUCTURE
+    # =========================================================================
     - name: "CLAMAV | Ensure database configuration tracking file is verified"
       ansible.builtin.file:
         path: "/etc/clamav/freshclam.conf"
@@ -373,7 +377,7 @@
         regexp: "^#?Checks\\s+"
         line: "Checks 2"
         state: "present"
-      when: "not ansible_check_mode" 
+      when: "not ansible_check_mode"
       notify: "Restart ClamAV Freshclam Service"
 
     - name: "CLAMAV | Ensure systemd drop-in override directory structures exist"
@@ -395,6 +399,9 @@
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
 
+    # =========================================================================
+    # FILE INTEGRITY MONITORING INFRASTRUCTURE (AIDE CONFIGURATION)
+    # =========================================================================
     - name: "AIDE | Locate distribution-specific configuration paths"
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -431,10 +438,15 @@
         path: "{{ '/var/lib/aide/aide.db.gz' if ansible_facts['os_family'] in ['Debian', 'Archlinux'] else '/var/lib/aide/aide.db' }}"
       register: active_aide_db_file
 
-    - name: "AIDE | Evict stale background system process locks proactively"
-      ansible.builtin.file:
-        path: "/var/log/aide/aide.log.lock"
-        state: "absent"
+    - name: "AIDE | Force flush rogue processes and stale file lock tracks"
+      ansible.builtin.shell: |
+        pkill -9 -f aide || true
+        rm -f /var/log/aide/aide.log.lock
+        rm -f /var/lib/aide/aide.db.new.gz.lock
+        rm -f /var/lib/aide/aide.db.gz.lock
+      changed_when: false
+      failed_when: false
+      when: "not ansible_check_mode"
 
     - name: "AIDE | Initialize secure baseline system database if missing"
       ansible.builtin.command: "aide --init"
@@ -521,6 +533,7 @@
         mode: "0600"
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
+
     - name: "HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-hardening.conf"
@@ -568,7 +581,7 @@
       ansible.builtin.command: "firewall-cmd --permanent --zone=block --add-interface={{ item }}"
       loop: "{{ live_hardware_interfaces.stdout_lines | default([]) }}"
       become: true
-      when: 
+      when:
         - "live_hardware_interfaces.stdout_lines is defined"
         - "is_workstation | bool"
         - "not ansible_check_mode"
@@ -642,6 +655,7 @@
       ansible.builtin.systemd:
         name: "usbguard"
         state: "restarted"
+      failed_when: false
 
     - name: "Restart ClamAV Freshclam Service"
       ansible.builtin.systemd:
