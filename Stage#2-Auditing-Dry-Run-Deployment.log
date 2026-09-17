@@ -1,0 +1,38 @@
+ ansible-playbook -i hosts.ini Stage#2-Auditing.yml --check -K
+BECOME password: 
+
+PLAY [Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Auditing)] **********************************************************************************
+
+TASK [Gathering Facts] ************************************************************************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Query active filesystem structure parameters] ******************************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Interrogate existing systemd logging frameworks] ***************************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT CORE | Enforce system auditing daemon is installed natively] **********************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT CORE | Verify sub-directory permission settings match secure guidelines] **********************************************************************************
+changed: [localhost]
+
+TASK [AUDIT RULES | Deploy un-falsifiable zero-trust kernel monitoring rules matrix] **********************************************************************************
+changed: [localhost]
+
+TASK [AUDIT DAEMON | Enforce background tracking services are fully armed] ********************************************************************************************
+changed: [localhost]
+
+TASK [AUDIT COMPLIANCE REPORT | Signal success of zero-trust auditing layer] ******************************************************************************************
+ok: [localhost] => {
+    "msg": "======================================================================\n🛡 SUCCESS: STAGE 2 SYSTEM SURVEILLANCE LOGGING MATRIX DEPLOYED!\n======================================================================\n  ↳ MONITORING METRICS : System Integrity Tracks Active\n  ↳ KERNEL LOCK ACTIVE : Immutable Shield Armed via [-e 2]\n  ↳ TARGET BOUNDARIES  : Auditing trail synchronized with Post-Hardening!\n======================================================================\n"
+}
+
+RUNNING HANDLER [Trigger Active Auditd Rebuild] ***********************************************************************************************************************
+changed: [localhost]
+
+PLAY RECAP ************************************************************************************************************************************************************
+localhost                  : ok=9    changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+

@@ -1,0 +1,15 @@
+
+PLAY [Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Core)] ***
+
+TASK [Gathering Facts] *********************************************************
+[ERROR]: Task failed: Duplicate become password prompt encountered waiting for become success.
+>>> Standard Error
+[sudo via ansible, key=qwxucmcnxkctqhtshknhehifrawtknzo] password:
+Sorry, try again.
+[sudo via ansible, key=qwxucmcnxkctqhtshknhehifrawtknzo] password:
+
+fatal: [localhost]: FAILED! => {"changed": false, "msg": "Task failed: Duplicate become password prompt encountered waiting for become success.\n>>> Standard Error\n[sudo via ansible, key=qwxucmcnxkctqhtshknhehifrawtknzo] password:\nSorry, try again.\n[sudo via ansible, key=qwxucmcnxkctqhtshknhehifrawtknzo] password:"}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=0    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
+

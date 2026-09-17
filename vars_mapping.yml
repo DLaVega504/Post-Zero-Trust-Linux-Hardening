@@ -1,4 +1,3 @@
----
 arch_vars:
   admin_group: "wheel"
   core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snap-pac", "git", "make", "aide", "rsync"]
@@ -14,7 +13,6 @@ arch_vars:
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@flatpak", dest: "/var/lib/flatpak" }
     - { name: "@srv", dest: "/srv" }
-
 debian_vars:
   admin_group: "sudo"
   core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon", "clamav-freshclam", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
@@ -29,7 +27,6 @@ debian_vars:
     - { name: "@cache", dest: "/var/cache/apt/archives" }
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@srv", dest: "/srv" }
-
 fedora_vars:
   admin_group: "wheel"
   core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
@@ -43,7 +40,6 @@ fedora_vars:
     - { name: "log", dest: "/var/log" }
     - { name: "cache", dest: "/var/cache/dnf" }
     - { name: "containers", dest: "/var/lib/containers" }
-
 suse_vars:
   admin_group: "wheel"
   core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snapper-plugins", "git", "make", "kernel-default", "grub2-snapper-plugin", "aide", "tripwire", "rsync"]
