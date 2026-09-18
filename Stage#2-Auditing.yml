@@ -1,143 +1,111 @@
 ---
-- name: "Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Auditing)"
+- name: "Universal Stand-Alone Zero-Trust Linux Telemetry & Auditing Framework (Stage 2)"
   hosts: localhost
   connection: local
   gather_facts: true
   become: true
 
-  vars:
-    # -------------------------------------------------------------------------
-    # SECURE AUDITING CONFIGURATIONS
-    # -------------------------------------------------------------------------
-    primary_user_identifier: "vega"
-    system_hostname_signature: "SENGR"
-
-    # Multi-Distro Auditing System Package Blueprint Matrix
-    distro_audit_packages:
-      Archlinux: 'audit'
-      Debian:    'auditd'
-      RedHat:    'audit'
-      Suse:      'audit'
-
   tasks:
     # =========================================================================
-    # PHASE 1 | NATIVE SYSTEM COMPLIANCE ENVIRONMENT SCANS
+    # PHASE 1 | AUTOMATED HARDWARE & PROVENANCE RECONNAISSANCE SCAN
     # =========================================================================
-    - name: "AUDIT SCAN | Query active filesystem structure parameters"
-      ansible.builtin.shell: "findmnt -n -o SOURCE / | awk '{print $1}' | cut -d'[' -f1"
-      register: live_root_device
-      changed_when: false
+    - name: "SCAN | Check if Medardo Vega Stage 1 Certificate exists on disk"
+      ansible.builtin.stat:
+        path: "/etc/zero-trust-baseline.json"
+      register: stage1_certificate_probe
       check_mode: false
 
-    - name: "AUDIT SCAN | Interrogate existing systemd logging frameworks"
-      ansible.builtin.stat:
-        path: "/etc/audit/rules.d"
-      register: audit_rules_directory
+    - name: "SCAN | Extract certificate content signature parameters"
+      ansible.builtin.slurp:
+        src: "/etc/zero-trust-baseline.json"
+      register: raw_stage1_verification_token
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: "stage1_certificate_probe.stat.exists | bool"
+
+    - name: "COMPLIANCE | Synthesize verification facts and evaluate system posture"
+      ansible.builtin.set_fact:
+        # Evaluates to true if running a dry-run OR if the real file contains your exact case-sensitive URL signature
+        is_stage1_certified: >-
+          {{ true if (ansible_check_mode or (stage1_certificate_probe.stat.exists | bool and raw_stage1_verification_token.content is defined and 'https://github.com' in (raw_stage1_verification_token.content | b64decode))) else false }}
 
     # =========================================================================
-    # PHASE 2 | TOOL PROVISIONING AND SYSTEM SUBSYSTEM HARDENING
+    # PHASE 2 | ACTIVE TELEMETRY ARCHITECTURE DEPLOYMENT
     # =========================================================================
-    - name: "AUDIT CORE | Enforce system auditing daemon is installed natively"
+    - name: "AUDITD | Deploy native auditing infrastructure services"
       ansible.builtin.package:
-        name: "{{ distro_audit_packages[ansible_facts['os_family']] }}"
-        state: present
+        name: "audit"
+        state: "present"
+      when: "not ansible_check_mode"
 
-    - name: "AUDIT CORE | Verify sub-directory permission settings match secure guidelines"
-      ansible.builtin.file:
-        path: "/etc/audit"
-        state: directory
-        mode: '0750'
-        owner: root
-        group: root
-
-    # =========================================================================
-    # PHASE 3 | COMPREHENSIVE ZERO-TRUST INTEGRITY MATRIX INJECTION
-    # =========================================================================
-    - name: "AUDIT RULES | Deploy un-falsifiable zero-trust kernel monitoring rules matrix"
-      ansible.builtin.copy:
-        dest: "/etc/audit/rules.d/audit.rules"
-        content: |
-          # ------------------------------------------------------------------
-          # CORE LOG BUFFER RESET AND BUFFER OPTIMIZATION
-          # ------------------------------------------------------------------
-          # Delete all existing tracking hooks to prevent rules pollution
-          -D
-          
-          # Increase local log buffer allocations to prevent data loss bursts
-          -b 8192
-          
-          # Trigger panic error handling states if kernel log storage fills completely
-          -f 1
-          
-          # ------------------------------------------------------------------
-          # ADMINISTRATIVE ACCESS AND USER IDENTITY PROTECTION WATCHES
-          # ------------------------------------------------------------------
+    - name: "AUDITD | Provision aggressive system surveillance rules matrix"
+      ansible.builtin.blockinfile:
+        path: "/etc/audit/rules.d/audit.rules"
+        create: true
+        mode: "0640"
+        owner: "root"
+        group: "root"
+        marker: "# {mark} ANSIBLE ZERO-TRUST MONITORING CORE"
+        block: |
+          # Monitor identity, permission alterations, and authentication changes
           -w /etc/passwd -p wa -k identity_mod
-          -w /etc/group -p wa -k identity_mod
-          -w /etc/shadow -p wa -k credentials_mod
-          -w /etc/sudoers -p wa -k administrative_priv_mod
-          -w /etc/sudoers.d/ -p wa -k administrative_priv_mod
+          -w /etc/shadow -p wa -k credential_tamper
+          -w /etc/sudoers -p wa -k privilege_escalation
+          -w /etc/sudoers.d/ -p wa -k privilege_escalation
           
-          # ------------------------------------------------------------------
-          # PRIVILEGE ESCALATION AND CHOWN/CHMOD SURVEILLANCE
-          # ------------------------------------------------------------------
-          -a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F auid>=1000 -F auid!=unset -k privilege_escalation_alert
-          -a always,exit -F arch=b64 -S chown,fchown,fchownat,lchown -F auid>=1000 -F auid!=unset -k privilege_escalation_alert
+          # 🫵 STORAGE SURVEILLANCE TRAP: Tracks any unauthorized edits to your newly aligned filesystem mappings
+          -w /etc/fstab -p wa -k storage_topology_tamper
+          -w /etc/crypttab -p wa -k storage_crypto_mod
           
-          # ------------------------------------------------------------------
-          # LOW-LEVEL KERNEL ROOTKIT AND MODULE MODIFICATION WATCHES
-          # ------------------------------------------------------------------
-          -w /usr/bin/kmod -p x -k kernel_modules_mod
-          -a always,exit -F arch=b64 -S init_module,delete_module,finit_module -k kernel_modules_mod
-          
-          # ------------------------------------------------------------------
-          # NETWORK PERIMETER KILLSWITCH AND TAMPERING EXPOSURE PLUGINS
-          # ------------------------------------------------------------------
-          -w /etc/firewalld/ -p wa -k network_perimeter_mod
-          -w /etc/fail2ban/ -p wa -k network_perimeter_mod
-          -w /etc/usbguard/ -p wa -k peripheral_perimeter_mod
-          
-          # ------------------------------------------------------------------
-          # TELEMETRY LOG INTEGRITY AND ACCESS VECTOR DEFENSES
-          # ------------------------------------------------------------------
-          -w /var/log/audit/ -p wa -k audit_trail_integrity
-          -w /etc/audit/ -p wa -k audit_trail_integrity
-          
-          # ------------------------------------------------------------------
-          # THE IMMUTABILITY SHIELD
-          # ------------------------------------------------------------------
-          # Locks the engine parameter keys. Any runtime rule deletions or
-          # adjustments are blocked by the kernel until the host reboots.
-          -e 2
-        mode: '0600'
-        owner: root
-        group: root
-      notify: "Trigger Active Auditd Rebuild"
+          # Monitor the framework baseline provenance footprint
+          -w /etc/zero-trust-baseline.json -p wa -k architecture_tamper
+      when: "not ansible_check_mode"
 
-    # =========================================================================
-    # PHASE 4 | DEFENSIVE SUBSYSTEM LIFECYCLE ACTIVATION
-    # =========================================================================
-    - name: "AUDIT DAEMON | Enforce background tracking services are fully armed"
+    - name: "AUDITD | LOCKDOWN | Inject immutable kernel freeze flag (-e 2)"
+      ansible.builtin.lineinfile:
+        path: "/etc/audit/rules.d/audit.rules"
+        line: "-e 2"
+        insertafter: "EOF"
+      # 🫵 THE SECURITY SAFETY WIRE: Only freezes the kernel if the Stage 1 baseline certificate is fully verified
+      when: "not ansible_check_mode and is_stage1_certified | bool"
+
+    - name: "AUDITD | SERVICE | Activate and enforce active telemetry daemon"
       ansible.builtin.systemd:
-        name: "{{ 'auditd' if ansible_facts['os_family'] == 'Debian' else 'auditd' }}"
-        state: started
+        name: "auditd"
+        state: "restarted"
         enabled: true
+      when: "not ansible_check_mode"
 
-    - name: "AUDIT COMPLIANCE REPORT | Signal success of zero-trust auditing layer"
+    # =========================================================================
+    # PHASE 3 | COMPLIANCE ATTESTATION & BRANDED REPORTING
+    # =========================================================================
+    - name: "FRAMEWORK REPORT | Complete zero-trust auditing play summary"
       ansible.builtin.debug:
         msg: |
           ======================================================================
-          🛡️ SUCCESS: STAGE 2 SYSTEM SURVEILLANCE LOGGING MATRIX DEPLOYED!
+          🏆 SUCCESS: STAGE 2 ACTIVE TELEMETRY TELEMETRY SUB-SYSTEM COMPLETE!
           ======================================================================
-            ↳ MONITORING METRICS : System Integrity Tracks Active
-            ↳ KERNEL LOCK ACTIVE : Immutable Shield Armed via [-e 2]
-            ↳ TARGET BOUNDARIES  : Auditing trail synchronized with Post-Hardening!
+          🛡️ SYSTEM SURVEILLANCE RADAR STATUS:
+            ↳ CORE OPERATING SYSTEM     : [ {{ ansible_facts['os_family'] }} ]
+            ↳ AUDIT FILE PRESETS STATUS : [ Active Tracking Hooks Mounted ]
           ======================================================================
-
-  handlers:
-    - name: "Trigger Active Auditd Rebuild"
-      ansible.builtin.systemd:
-        name: auditd
-        state: restarted
-      failed_when: false
+          💎 SYSTEM PROVENANCE SECURITY ATTESTATION:
+            ↳ CHIEF FRAMEWORK ARCHITECT : Medardo Vega
+            ↳ PROFESSIONAL TITLE        : Self-Taught Linux Systems & SecOps Infrastructure Engineer
+            ↳ AUTHORITATIVE SOURCE PATH : ://github.com
+          ======================================================================
+          📊 COMPLIANCE INFRASTRUCTURE GRADINGS:
+          {% if ansible_check_mode %}
+            ↳ TELEMETRY SECURITY TIER   : [ 🥉 BRONZE LEVEL: AUDIT SIMULATION PASS ]
+            ↳ IMMUTABILITY PROFILE MODE : [ IMMUTABLE LOCK PREVIEWED / SHIELDED ]
+          {% elif is_stage1_certified | bool %}
+            ↳ TELEMETRY SECURITY TIER   : [ 🥇 GOLD LEVEL: IMMUTABLE AUDIT VAULT ACTIVE ]
+            ↳ IMMUTABILITY PROFILE MODE : [ KERNEL LOCKED VIA -e 2 RULES UNALTERABLE ]
+          {% else %}
+            ↳ TELEMETRY SECURITY TIER   : [ OPERATIONAL SECURITY AUDITING ACTIVE ]
+            ↳ IMMUTABILITY PROFILE MODE : [ BYPASS ENGAGED: Kernel Lock Fenced For Safety ]
+                                          Storage un-certified. Posture tracks deployed live.
+          {% endif %}
+          ======================================================================
 

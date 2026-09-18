@@ -1,0 +1,261 @@
+ansible-playbook -i hosts.ini Stage#2-Post-Hardening.yml --check -K
+BECOME password: 
+
+PLAY [Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Core)] **************************************************************************************
+
+TASK [Gathering Facts] ************************************************************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Probe motherboard boot firmware directory existence] *****************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Detect active root filesystem source device handle] ******************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Detect active boot partition source device handle] *******************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Detect active root filesystem type format signature] *****************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Discover absolute persistent root device UUID] ***********************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Discover running network interfaces directly from kernel space] ******************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Query active subvolume topology tree from Btrfs root] ****************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Read active initramfs hook parameters cleanly] ***********************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Synthesize primary system hardware and layout facts] *****************************************************************************************************
+ok: [localhost]
+
+TASK [SCAN | Evaluate dependent topo structural safety definitions] ***************************************************************************************************
+ok: [localhost]
+
+TASK [SMART EVALUATOR | Determine if layout matches defined standards or triggers bypass fallback] ********************************************************************
+ok: [localhost]
+
+TASK [COMPLIANCE | Execute initial pre-hardening baseline audit scan] *************************************************************************************************
+skipping: [localhost]
+
+TASK [SECURITY CORE | Purge stale package manager database transaction locks] *****************************************************************************************
+ok: [localhost]
+
+TASK [SECURITY CORE | Download BlackArch Bootstrap Script safely] *****************************************************************************************************
+changed: [localhost]
+
+TASK [SECURITY CORE | Execute BlackArch Repository Bootstrap Mirror Keys] *********************************************************************************************
+skipping: [localhost]
+
+TASK [SECURITY CORE | Purge stale package manager database transaction locks] *****************************************************************************************
+ok: [localhost]
+
+TASK [SECURITY CORE | Deploy localized baseline defensive software profiles] ******************************************************************************************
+ok: [localhost]
+
+TASK [SECURITY CORE | Deploy advanced external repository intrusion detection engines] ********************************************************************************
+skipping: [localhost]
+
+TASK [SECURITY CORE | SNORT3 | Provision hardware-aware dynamic systemd daemon service] *******************************************************************************
+changed: [localhost]
+
+TASK [SECURITY CORE | SNORT3 | Activate and enable background monitoring state] ***************************************************************************************
+skipping: [localhost]
+
+TASK [BTRFS | ALIGNMENT | Execute atomic unmount, purge, and pristine recreation loop] ********************************************************************************
+skipping: [localhost] => (item={'mountpoint': '/swap', 'subvol': ['mnt/@swap']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/log', 'subvol': ['mnt/@log']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/cache/pacman/pkg', 'subvol': ['mnt/@cache']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/lib/docker', 'subvol': ['mnt/@docker']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/lib/flatpak', 'subvol': ['mnt/@flatpak']}) 
+skipping: [localhost] => (item={'mountpoint': '/srv', 'subvol': ['mnt/@srv']}) 
+skipping: [localhost]
+
+TASK [BTRFS | ALIGNMENT | Execute atomic unmount, purge, and pristine recreation loop] ********************************************************************************
+skipping: [localhost] => (item={'mountpoint': '/swap', 'subvol': ['mnt/@swap']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/log', 'subvol': ['mnt/@log']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/cache/pacman/pkg', 'subvol': ['mnt/@cache']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/lib/docker', 'subvol': ['mnt/@docker']}) 
+skipping: [localhost] => (item={'mountpoint': '/var/lib/flatpak', 'subvol': ['mnt/@flatpak']}) 
+skipping: [localhost] => (item={'mountpoint': '/srv', 'subvol': ['mnt/@srv']}) 
+skipping: [localhost]
+
+TASK [SWAP CONFIG | SANITIZATION | Purge old raw swap lines out of memory map] ****************************************************************************************
+changed: [localhost]
+
+TASK [SWAP CONFIG | ALLOCATION | Provision uncompressed swap file block matching target size] *************************************************************************
+skipping: [localhost]
+
+TASK [SWAP CONFIG | PERMISSIONS | Lock down strict administrative execution permissions] ******************************************************************************
+skipping: [localhost]
+
+TASK [SWAP CONFIG | INITIALIZATION | Format raw storage allocation block headers] *************************************************************************************
+skipping: [localhost]
+
+TASK [SWAP CONFIG | LEDGER | Pin swap parameters and fallback priority into active fstab configuration] ***************************************************************
+skipping: [localhost]
+
+TASK [ZRAM PROVISION | Deploy chosen compression algorithm setup matching scanned hardware profile] *******************************************************************
+skipping: [localhost]
+
+TASK [OOM TUNING | Deploy custom systemd-oomd Pressure Stall Information (PSI) configuration metrics] *****************************************************************
+skipping: [localhost]
+
+TASK [OOM SERVICES | Handle live alignment transitions for active memory daemons] *************************************************************************************
+skipping: [localhost]
+
+TASK [SYSCTL | Commit step-down swappiness value directly onto active kernel memory map] ******************************************************************************
+skipping: [localhost]
+
+TASK [VAULT ENGINE | Construct automated multi-layer binary wrapper utilities] ****************************************************************************************
+changed: [localhost]
+
+TASK [VAULT ENGINE | Map structural shortcuts and environmental aliases] **********************************************************************************************
+changed: [localhost]
+
+TASK [USBGUARD | Ensure configuration parent directory paths are initialized] *****************************************************************************************
+ok: [localhost]
+
+TASK [USBGUARD | Interrogate live connected device profiles on this host] *********************************************************************************************
+skipping: [localhost]
+
+TASK [USBGUARD | Deploy safety-validated anti-lockout rules matrix to storage] ****************************************************************************************
+changed: [localhost]
+
+TASK [CLAMAV | Ensure database configuration tracking file is verified] ***********************************************************************************************
+changed: [localhost]
+
+TASK [CLAMAV | Ensure systemd drop-in override directory structures exist] ********************************************************************************************
+changed: [localhost]
+
+TASK [CLAMAV | Inject custom systemd low-priority cgroup overrides] ***************************************************************************************************
+changed: [localhost]
+
+TASK [BOOT HARDEN | Restrict host directory permissions to administrative root only] **********************************************************************************
+changed: [localhost]
+
+TASK [HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl] *********************************************************************************
+changed: [localhost]
+
+TASK [HARDENING | Deploy aggressive swap and memory tuning parameters matching host tiers] ****************************************************************************
+changed: [localhost]
+
+TASK [HARDENING | Secure virtual execution interfaces securely inside fstab storage arrays] ***************************************************************************
+changed: [localhost] => (item={'path': '/tmp', 'opts': 'defaults,nosuid,nodev,size=50%'})
+changed: [localhost] => (item={'path': '/dev/shm', 'opts': 'defaults,noexec,nosuid,nodev,size=1G'})
+
+TASK [BOOT AUDIT | Scan if GRUB bootloader password protection is already active] *************************************************************************************
+skipping: [localhost]
+
+TASK [BOOT AUDIT | Generate un-falsifiable PBKDF2 bootloader passphrase hash] *****************************************************************************************
+skipping: [localhost]
+
+TASK [BOOT HARDEN | Deploy password protections to unprotected blocks with strict pre-check] **************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening | Enable GRUB Cryptodisk if /boot is within the encrypted volume bounds] *************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Arch Traditional) | Inject encrypt hook kernel mapping line] ************************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Arch Traditional Hooks) | Force-align /etc/mkinitcpio.conf layout sequence] *********************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Arch Systemd) | Inject sd-encrypt kernel argument configuration blocks] *************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Debian) | Align cryptographic containers into crypttab block matrices] **************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Fedora/Suse) | Build Dracut compliant kernel arguments] *****************************************************************************************
+skipping: [localhost]
+
+TASK [BOOT Hardening (Fedora/Suse) | Force Dracut configuration module inclusion snippet] *****************************************************************************
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke mkinitcpio compilation] ****************************************************************************************************************
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke update-initramfs orchestration] ********************************************************************************************************
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke Dracut hardware synchronization loops] *************************************************************************************************
+skipping: [localhost]
+
+TASK [BOOTLOADER COMPILE | Synchronize GRUB configurations onto legacy MBR blocks] ************************************************************************************
+skipping: [localhost]
+
+TASK [BOOTLOADER COMPILE | Synchronize GRUB configurations onto alternative layout blocks] ****************************************************************************
+skipping: [localhost]
+
+TASK [STAGE 1 KILLSWITCH | Force scanned physical interfaces into block zone permanently] *****************************************************************************
+skipping: [localhost] => (item=ens5) 
+skipping: [localhost] => (item=wls1) 
+skipping: [localhost]
+
+TASK [STAGE 2 & 3 KILLSWITCH | Permanently assign virtual tunnel interfaces to trusted zones] *************************************************************************
+skipping: [localhost] => (item=tun+) 
+skipping: [localhost] => (item=wg+) 
+skipping: [localhost] => (item=proton+) 
+skipping: [localhost]
+
+TASK [FAIL2BAN | Deploy optimized and enhanced local jail protection matrices] ****************************************************************************************
+changed: [localhost]
+
+TASK [AUDITD | Deploy un-falsifiable zero-trust kernel logging rules matrix] ******************************************************************************************
+changed: [localhost]
+
+TASK [SECURITY SERVICES | Activate and enable baseline security infrastructure daemons] *******************************************************************************
+ok: [localhost] => (item=firewalld)
+changed: [localhost] => (item=fail2ban)
+changed: [localhost] => (item=sysstat)
+changed: [localhost] => (item=usbguard)
+
+TASK [SNAPPER | Drop custom automated snapshot tracking service units] ************************************************************************************************
+changed: [localhost] => (item={'name': 'snapper-posthardening.service', 'content': '[Unit]\nDescription=Automated Post-Hardening Posture Timeline Snapshot\nAfter=local-fs.target\n[Service]\nType=oneshot\nExecStart=/usr/bin/snapper -c root create --type timeline --description "Automated Security Hardening Checkpoint"\n'})
+changed: [localhost] => (item={'name': 'snapper-posthardening.timer', 'content': '[Unit]\nDescription=Trigger Snapper Timeline Snapshot Twice Daily\n[Timer]\nOnCalendar=*-*-* 08,16:00:00\nPersistent=true\n[Install]\nWantedBy=timers.target\n'})
+
+TASK [SECURITY CORE | RKHUNTER | Deploy dynamic daily rootkit surveillance cronjob] ***********************************************************************************
+changed: [localhost]
+
+TASK [STORAGE | Force override FDE detection for Btrfs on LUKS2] ******************************************************************************************************
+skipping: [localhost]
+
+TASK [STORAGE | Verify Argon2id hardware footprint from core mapper] **************************************************************************************************
+skipping: [localhost]
+
+TASK [STORAGE | Set Gold Pentagon Tier compliance facts] **************************************************************************************************************
+skipping: [localhost]
+
+TASK [COMPLIANCE | Run post-deployment security hardening verification scan] ******************************************************************************************
+skipping: [localhost]
+
+TASK [COMPLIANCE | Calculate real-time framework execution metrics] ***************************************************************************************************
+ok: [localhost]
+
+TASK [COMPLIANCE | Compute final structural point values] *************************************************************************************************************
+ok: [localhost]
+
+TASK [FRAMEWORK REPORT | Complete zero-trust post-hardening play summary] *********************************************************************************************
+ok: [localhost] => {
+    "msg": "======================================================================\n🏆 SUCCESS: STAGE 2 HARDENING ACTIVE HARDENING ENGINE COMPLETE!\n======================================================================\n🛡 SMART TOPO ASSESSMENTS SELECTION RECORDS:\n  ↳ STORAGE METRIC PROFILE     : [BYPASS ENGINE ON (UNKNOWN DESIGN)]\n  ↳ FIRMWARE PLATFORM DETECTED : [BIOS LEGACY MBR SYSTEM]\n  ↳ KERNEL HARDENED STORAGE    : [Isolated Contiguous   8\nGB Swap allocation verified]\n======================================================================\n⚙ HARDWARE-AWARE INTEL RECONNAISSANCE SUMMARY:\n  ↳ CONTEXTUAL RAM TIER SECTOR : 4 GB DETECTED\n  ↳ DYNAMIC SWAPPINESS MARKER  : vm.swappiness = 150 INJECTED\n  ↳ ASSIGNED COMPRESSION CORE  : ZRAM MODULE ALIGNED TO [ LZ4 ]\n  ↳ DEPLOYED OOM PROTECTOR     : ACTIVE PERIMETER MANAGED VIA [ EARLYOOM ]\n======================================================================\n💎 SYSTEM PROVENANCE SECURITY ATTESTATION:\n  ↳ CHIEF FRAMEWORK ARCHITECT  : Medardo Vega\n  ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer\n  ↳ AUTHORITATIVE SOURCE PATH  : ://github.com\n======================================================================\n📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:\n  ↳ BEFORE DEPLOYMENT BASELINE : 65 points\n  ↳ AFTER ACTIVE POST-HARDENING: 82 points\n  ↳ STAGE 2 DELTA IMPROVEMENT  : +17 points achieved!\n  ↳ OVERALL SYSTEM DESIGNATION : [ OPERATIONAL SECURITY CERTIFICATE ]\n  ↳ SECURITY ATTESTATION NOTE  : Storage un-certified. Boot paths safely fenced.\n                                 Userland perimeters fully fortified down to a science.\n======================================================================\n\n\n🚨 CRYPTOGRAPHIC COMPLIANCE WARNING SHIELD:\n[!] CRITICAL EXPOSURE DETECTED: Early-boot environment is running \n    without a verified full-disk encryption baseline signature file.\n    \n    💡 BENCHMARK ANALYSIS: Running a completed Stage 1 live installation pass \n       to establish your absolute Argon2id hardware footprint file will \n       automatically elevate your framework grading to the Gold Pentagon Tier.\n======================================================================\n📖 SECURITY LIFECYCLE STATE: \n  [+] System hardened successfully. Turnkey multi-distro standalone pass finished.\n======================================================================\n"
+}
+
+RUNNING HANDLER [Trigger Active System Kernel Flush] ******************************************************************************************************************
+skipping: [localhost]
+
+RUNNING HANDLER [Reload Active Systemd Core] **************************************************************************************************************************
+ok: [localhost]
+
+RUNNING HANDLER [Reload Active System Services Profiles] **************************************************************************************************************
+changed: [localhost]
+
+PLAY RECAP ************************************************************************************************************************************************************
+localhost                  : ok=39   changed=19   unreachable=0    failed=0    skipped=37   rescued=0    ignored=0   
+
+
