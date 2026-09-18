@@ -80,7 +80,7 @@
         admin_group: 'wheel'
         grub_config_uefi: '/boot/grub2/grub.cfg'
         grub_config_bios: '/boot/grub2/grub.cfg'
-        grub_compile_cmd: 'grub2-mkconfi
+        grub_compile_cmd: 'grub2-mkconfig'
 
   tasks:
     # =========================================================================
@@ -92,7 +92,9 @@
       register: efi_directory_check
 
     - name: "SCAN | Detect active root filesystem source device handle"
-      ansible.builtin.shell: "set -o pipefail && findmnt -n -o SOURCE / | awk '{print $1}' | cut -d'[' -f1"
+      ansible.builtin.shell: |
+        set -o pipefail
+        findmnt -n -o SOURCE / | awk '{print $1}' | cut -d'[' -f1
       args:
         executable: /bin/bash
       register: root_source_device
@@ -100,7 +102,9 @@
       check_mode: false
 
     - name: "SCAN | Detect active boot partition source device handle"
-      ansible.builtin.shell: "set -o pipefail && findmnt -n -o SOURCE /boot | awk '{print $1}' | cut -d'[' -f1 || echo 'nested'"
+      ansible.builtin.shell: |
+        set -o pipefail
+        findmnt -n -o SOURCE /boot | awk '{print $1}' | cut -d'[' -f1 || echo 'nested'
       args:
         executable: /bin/bash
       register: boot_source_device
@@ -108,7 +112,8 @@
       check_mode: false
 
     - name: "SCAN | Detect active root filesystem type format signature"
-      ansible.builtin.shell: "findmnt -n -o FSTYPE /"
+      ansible.builtin.shell: |
+        findmnt -n -o FSTYPE /
       register: root_fs_signature
       changed_when: false
       check_mode: false
