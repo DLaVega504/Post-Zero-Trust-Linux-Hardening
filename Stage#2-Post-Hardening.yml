@@ -187,6 +187,7 @@
     # =========================================================================
     # PHASE 1B | SMART ASSESSMENT INTELLIGENCE AND FACT SYNTHESIS
     # =========================================================================
+
     - name: "SCAN | Synthesize primary system hardware and layout facts"
       ansible.builtin.set_fact:
         system_ram_gb: "{{ (ansible_facts['memtotal_mb'] | int / 1024) | round(0, 'common') | int }}"
@@ -211,6 +212,8 @@
         expected_flatpak_subvol: "@flatpak"
         expected_srv_subvol: "@srv"
         expected_snapshots_subvol: "@snapshots"
+        expected_container_subvol: "@container"
+
 
     - name: "SCAN | Evaluate dependent topo structural safety definitions"
       ansible.builtin.set_fact:
@@ -261,6 +264,8 @@
         - { mountpoint: '/var/lib/flatpak', expected_subvol: "{{ expected_flatpak_subvol }}" }
         - { mountpoint: '/srv', expected_subvol: "{{ expected_srv_subvol }}" }
         - { mountpoint: '/.snapshots', expected_subvol: "{{ expected_snapshots_subvol }}" }
+        - { mountpoint: '/var/lib/containers', expected_subvol: "{{ expected_container_subvol }}" }
+
       when: "is_btrfs_layout is defined and is_btrfs_layout | bool and not ansible_check_mode"
 
     - name: "BTRFS | UNMOUNT | Safely unmount operations pool partition"
@@ -268,6 +273,7 @@
       changed_when: false
       failed_when: false
       when: "is_btrfs_layout is defined and is_btrfs_layout | bool and not ansible_check_mode"
+
     - name: "BTRFS | LEDGER | Commit standardized subvolumes to physical fstab parameters"
       ansible.posix.mount:
         path: "{{ item.mountpoint }}"
@@ -283,6 +289,8 @@
         - { mountpoint: '/var/lib/flatpak', expected_subvol: "{{ expected_flatpak_subvol }}" }
         - { mountpoint: '/srv', expected_subvol: "{{ expected_srv_subvol }}" }
         - { mountpoint: '/.snapshots', expected_subvol: "{{ expected_snapshots_subvol }}" }
+        - { mountpoint: '/var/lib/containers', expected_subvol: "{{ expected_container_subvol }}" }
+
       when: "is_btrfs_layout is defined and is_btrfs_layout | bool and not ansible_check_mode"
     # =========================================================================
     # PHASE 4 | ADAPTIVE HYBRID MEMORY RECONSTRUCTION ENGINE
@@ -682,6 +690,7 @@
         firewall-cmd --permanent --zone=trusted --add-source=127.0.0.1/8
         firewall-cmd --permanent --zone=trusted --add-source=::1/128
         
+        # 1. Programmatically assign secure BPF structural wildcard mappings to the trusted zone
         for interface_regex in "tun+" "wg+" "proton+" "pvpn+"; do
            {% raw %}
            firewall-cmd --permanent --zone=trusted --add-source="bpf:io.github.firewalld.interface:${interface_regex}" 2>/dev/null || \
@@ -689,8 +698,15 @@
            {% endraw %}
         done
         
+        # 2. Explicitly loop and strip VPN tunneled interfaces out of the drop zone list
         for physical_card in $(echo "{{ active_network_interfaces.stdout | default('wls1') }}" | tr ',' ' '); do
-           firewall-cmd --permanent --zone=drop --add-interface="${physical_card}"
+           if [[ "${physical_card}" =~ ^(proton|pvpn|tun|wg) ]]; then
+              echo "[*] Skipping VPN tunnel containment bypass for: ${physical_card}"
+              firewall-cmd --permanent --zone=drop --remove-interface="${physical_card}" 2>/dev/null || true
+           else
+              echo "[+] Securing raw hardware interface inside drop container: ${physical_card}"
+              firewall-cmd --permanent --zone=drop --add-interface="${physical_card}"
+           fi
         done
         firewall-cmd --reload
       args:
@@ -824,7 +840,7 @@
           💎 SYSTEM PROVENANCE SECURITY ATTESTATION:
             ↳ CHIEF FRAMEWORK ARCHITECT  : Medardo Vega
             ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer
-            ↳ AUTHORITATIVE SOURCE PATH  : https://github.com
+            ↳ AUTHORITATIVE SOURCE PATH  : https://github.com/DlaVega504
           ======================================================================
           📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:
             ↳ BEFORE DEPLOYMENT BASELINE : {{ lynis_pre_score | default('65') }} points
