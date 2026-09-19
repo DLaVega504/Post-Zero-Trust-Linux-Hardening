@@ -1,226 +1,126 @@
 ---
-- name: "Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Verification Audit)"
+- name: "Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Audit)"
   hosts: localhost
   connection: local
   gather_facts: true
   become: true
   vars:
-    # -------------------------------------------------------------------------
-    # AUDIT ALIGNMENT BASELINE CONFIGURATIONS
-    # -------------------------------------------------------------------------
-    security_architecture_profile: "pentagon"
-    secure_vault_enabled: true
-    vault_partition_handle: "/dev/sda2"
-    vault_mount_target: "/vault"
-    primary_user_identifier: "vega"
+    # =========================================================================
+    # DYNAMIC HARDWARE-AWARE MEMORY PROFILE METRIC TARGETS
+    # =========================================================================
+    target_swappiness: "{{ '150' if (ansible_facts['memtotal_mb'] | int < 8192) else ('100' if (ansible_facts['memtotal_mb'] | int < 16384) else '10') }}"
 
-    # Multi-Distro Cross-Architecture Translation Matrix Blueprint (Must match Core)
-    distro_matrix:
-      Archlinux:
-        clamd_conf: '/etc/clamav/clamd.conf'
-        freshclam_conf: '/etc/clamav/freshclam.conf'
-        clamd_service: 'clamd'
-        grub_def_path: '/etc/default/grub'
-      Debian:
-        clamd_conf: '/etc/clamav/clamd.conf'
-        freshclam_conf: '/etc/clamav/freshclam.conf'
-        clamd_service: 'clamav-daemon'
-        grub_def_path: '/etc/default/grub'
-      RedHat:
-        clamd_conf: '/etc/clamd.d/scan.conf'
-        freshclam_conf: '/etc/freshclam.conf'
-        clamd_service: 'clamd@scan'
-        grub_def_path: '/etc/default/grub'
-      Suse:
-        clamd_conf: '/etc/clamd.conf'
-        freshclam_conf: '/etc/freshclam.conf'
-        clamd_service: 'clamd'
-        grub_def_path: '/etc/default/grub'
   tasks:
     # =========================================================================
-    # PHASE 1 | AUTOMATED HARDWARE, TOPO & LAYOUT VERIFICATION SCANNING ENGINE
+    # PHASE 1 | AUTONOMOUS HARDWARE & COMPLIANCE TELEMETRY SCANNING
     # =========================================================================
-    - name: "AUDIT SCAN | Detect active root filesystem source device handle"
-      ansible.builtin.shell: "set -o pipefail && findmnt -n -o SOURCE / | awk '{print $1}' | cut -d'[' -f1"
+    - name: "AUDIT SCAN | Probe presence of Stage 1 Framework Hardening Certificate"
+      ansible.builtin.stat:
+        path: "/etc/zero-trust-stage1.cert"
+      register: stage1_certificate_check
+
+    - name: "AUDIT SCAN | Probe system power rail for lithium-ion battery nodes"
+      ansible.builtin.stat:
+        path: "/sys/class/power_supply/BAT0"
+      register: battery_node_check
+
+    - name: "AUDIT SCAN | Read raw DMI motherboard hardware chassis type integer"
+      ansible.builtin.slurp:
+        src: "/sys/class/dmi/id/chassis_type"
+      register: raw_dmi_chassis_id
+      failed_when: false
+
+    - name: "AUDIT SCAN | Verify active VFS memory mount table state for containers"
+      ansible.builtin.shell: "set -o pipefail && findmnt -m /var/lib/containers -o FSTYPE,OPTIONS | grep btrfs"
       args:
         executable: /bin/bash
-      register: audit_root_source
+      register: container_vfs_mount_check
+      failed_when: false
       changed_when: false
 
-    - name: "AUDIT SCAN | Detect active root filesystem type format signature"
-      ansible.builtin.shell: "findmnt -n -o FSTYPE /"
-      register: audit_root_fs_sig
+    - name: "AUDIT SCAN | Capture live kernel memory parameters from sysctl registers"
+      ansible.builtin.shell: "sysctl vm.swappiness vm.dirty_background_bytes vm.dirty_bytes vm.vfs_cache_pressure"
+      register: live_kernel_sysctl_metrics
       changed_when: false
 
-    - name: "AUDIT SCAN | Discover absolute persistent root device UUID"
-      ansible.builtin.shell: "blkid -s UUID -o value {{ audit_root_source.stdout | default('/dev/null') }}"
-      register: audit_live_root_uuid
+    - name: "AUDIT SCAN | Extract firewalld runtime card isolation containment states"
+      ansible.builtin.shell: "firewall-cmd --zone=drop --list-interfaces && firewall-cmd --zone=public --list-interfaces && firewall-cmd --zone=trusted --list-interfaces"
+      register: live_firewall_zone_trace
       changed_when: false
+    - name: "AUDIT SCAN | Evaluate framework background services supervisor lifecycles"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+      loop:
+        - "vpn-monitor.service"
+      register: daemon_lifecycle_states
 
-    - name: "AUDIT SCAN | Interrogate host binary installation signatures"
-      ansible.builtin.shell: "command -v {{ item }} || echo 'MISSING'"
-      register: audit_security_binaries
-      loop: [ 'fail2ban-server', 'snort', 'clamd', 'usbguard', 'firewall-cmd', 'ufw' ]
-      changed_when: false
-    - name: "AUDIT SCAN | Synthesize running environment fact profiles"
+    - name: "AUDIT SCAN | Verify existence of daily automated cron maintenance cleaners"
+      ansible.builtin.stat:
+        path: "/etc/cron.daily/btrfs-snapshot-cleaner"
+      register: cron_cleaner_check
+
+    - name: "AUDIT SCAN | Synthesize translated hardware form-factor profile facts"
       ansible.builtin.set_fact:
-        system_ram_gb: "{{ (ansible_facts['memtotal_mb'] | int / 1024) | round(0, 'common') | int }}"
-        is_btrfs_layout: "{{ 'btrfs' in audit_root_fs_sig.stdout | default('') }}"
-        fail2ban_installed: "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'fail2ban-server') | first).stdout }}"
-        snort_installed:    "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'snort') | first).stdout }}"
-        clamav_installed:   "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'clamd') | first).stdout }}"
-        usbguard_installed: "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'usbguard') | first).stdout }}"
-        firewalld_native:   "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'firewall-cmd') | first).stdout }}"
-        ufw_native:         "{{ 'MISSING' not in (audit_security_binaries.results | selectattr('item', 'equalto', 'ufw') | first).stdout }}"
-    # =========================================================================
-    # PHASE 2 | UNIFIED STORAGE TOPOLOGY AND FILE SYSTEM AUDITING MODULES
-    # =========================================================================
-    - name: "AUDIT | BTRFS FSTAB | Interrogate persistent ledger subvolume mappings"
-      ansible.builtin.shell: "grep -E 'subvol={{ item }}' /etc/fstab"
-      register: audit_fstab_subvols
-      loop: [ '@swap', '@log', '@cache', '@docker', '@flatpak', '@srv' ]
-      failed_when: false
-      changed_when: false
-      when: "is_btrfs_layout | bool"
+        hardware_form_factor: >-
+          {%- set chassis_int = (raw_dmi_chassis_id.content | b64decode | trim | int) if (raw_dmi_chassis_id.content is defined and raw_dmi_chassis_id.content) else 0 -%}
+          {%- if battery_node_check.stat.exists or chassis_int in [8, 9, 10, 14] -%}
+          LAPTOP / PORTABLE WORKSTATION
+          {%- elif chassis_int in [3, 4, 6, 7] -%}
+          DESKTOP / FIXED SECURE STATION
+          {%- elif chassis_int in [23, 24, 25] or ansible_facts['processor_vcpus'] | int > 16 -%}
+          ENTERPRISE HARDENED SERVER BLADE
+          {%- else -%}
+          STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)
+          {%- endif -%}
 
-    - name: "AUDIT | STORAGE MOUNTS | Verify active live kernel topography mounts"
-      ansible.builtin.shell: "findmnt -n -o OPTIONS {{ item }}"
-      register: audit_active_mount_opts
-      loop: [ '/var/log', '/srv', '/tmp', '/dev/shm' ]
-      failed_when: false
-      changed_when: false
     # =========================================================================
-    # PHASE 3 | ADAPTIVE VOLATILE MEMORY AND SYSTEM MEMORY MAP AUDITING
+    # PHASE 2 | CUSTOM COMPLIANCE TELEMETRY ATTESTATION LEDGER
     # =========================================================================
-    - name: "AUDIT | SWAP ENGINE | Interrogate continuous runtime swap file boundaries"
-      ansible.builtin.shell: "swapon --show --noheadings --bytes | grep '/swap/swapfile'"
-      register: audit_live_swapfile
-      failed_when: false
-      changed_when: false
-
-    - name: "AUDIT | ZRAM | Validate active kernel compression module parameters"
-      ansible.builtin.shell: "zramctl --noheadings --output ALGORITHM"
-      register: audit_zram_algo
-      failed_when: false
-      changed_when: false
-
-    - name: "AUDIT | SYSCTL HARDENING | Probe kernel parameter boundary limits"
-      ansible.builtin.shell: "sysctl {{ item }}"
-      register: audit_sysctl_bounds
-      loop: [ 'vm.swappiness', 'kernel.kptr_restrict', 'kernel.dmesg_restrict', 'net.ipv4.conf.all.rp_filter' ]
-      changed_when: false
-    # =========================================================================
-    # PHASE 4 | PERIMETER SECURITY AND NETWORK ISOLATION INTEGRITY AUDITING
-    # =========================================================================
-    - name: "AUDIT | FIREWALLD | Validate active block zone interface containment parameters"
-      ansible.builtin.shell: "firewall-cmd --zone=block --list-interfaces"
-      register: audit_firewalld_block_interfaces
-      failed_when: false
-      changed_when: false
-      when: "firewalld_native | bool"
-
-    - name: "AUDIT | FIREWALLD | Validate virtual tunnel boundary exceptions"
-      ansible.builtin.shell: "firewall-cmd --zone=trusted --list-interfaces"
-      register: audit_firewalld_trusted_interfaces
-      failed_when: false
-      changed_when: false
-      when: "firewalld_native | bool"
-
-    - name: "AUDIT | UFW | Validate absolute multi-layer deny and tunnel matrices"
-      ansible.builtin.shell: "ufw status verbose"
-      register: audit_ufw_status_output
-      failed_when: false
-      changed_when: false
-      when: "ufw_native | bool and not firewalld_native | bool"
-    # =========================================================================
-    # PHASE 5 | HOST INSTALLED DAEMON HARDENING AND CEILING ISOLATION AUDITS
-    # =========================================================================
-    - name: "AUDIT | SNORT | Verify hardware-aware local network mapping rules"
-      ansible.builtin.shell: "grep -E '^ipvar HOME_NET' /etc/snort/snort.conf"
-      register: audit_snort_home_net
-      failed_when: false
-      changed_when: false
-      when: "snort_installed | bool"
-
-    - name: "AUDIT | USBGUARD | Interrogate active system daemon lockout protocols"
-      ansible.builtin.shell: "grep '^ImplicitPolicyTarget=' /etc/usbguard/usbguard-daemon.conf"
-      register: audit_usbguard_policy
-      failed_when: false
-      changed_when: false
-      when: "usbguard_installed | bool"
-
-    - name: "AUDIT | CLAMAV | Validate low-resource performance thread boundaries"
-      ansible.builtin.shell: "grep -E '^(MaxThreads|MaxQueue)' {{ distro_matrix[ansible_facts['os_family']]['clamd_conf'] }}"
-      register: audit_clamav_chokehold
-      failed_when: false
-      changed_when: false
-      when: "clamav_installed | bool"
-
-    - name: "AUDIT | CLAMAV CGROUP | Validate systemd hardware resource cap fences"
-      ansible.builtin.shell: "grep -E '^(Nice|CPUQuota)' /etc/systemd/system/{{ distro_matrix[ansible_facts['os_family']]['clamd_service'] }}.service.d/override.conf"
-      register: audit_clamav_cgroup
-      failed_when: false
-      changed_when: false
-      when: "clamav_installed | bool"
-    # =========================================================================
-    # PHASE 6 | SYSTEM INTEGRITY SECURITY AND INTRUSION ANALYSIS AUDITS
-    # =========================================================================
-    - name: "AUDIT | AUDITD | Verify presence of un-falsifiable configuration freeze states"
-      ansible.builtin.shell: "grep '^-e 2' /etc/audit/rules.d/audit.rules"
-      register: audit_auditd_lockdown
-      failed_when: false
-      changed_when: false
-
-    - name: "AUDIT | GRUB BOOTLOADER | Check cryptographic disk activation parameters"
-      ansible.builtin.shell: "grep '^GRUB_ENABLE_CRYPTODISK=' {{ distro_matrix[ansible_facts['os_family']]['grub_def_path'] }}"
-      register: audit_grub_cryptodisk
-      failed_when: false
-      changed_when: false
-
-    - name: "COMPLIANCE AUDIT | Run framework-wide live evaluation compliance pass"
-      ansible.builtin.shell: "lynis audit system --quick"
-      register: audit_live_lynis_pass
-      failed_when: false
-      changed_when: false
-    # =========================================================================
-    # PHASE 7 | ANALYTICS COMPILATION AND ZERO-TRUST METRIC GRADING REPORT
-    # =========================================================================
-    - name: "AUDIT REPORT | Parse real-time validation metrics"
-      ansible.builtin.set_fact:
-        final_lynis_index: "{{ (audit_live_lynis_pass.stdout | default('', true) | regex_search('Hardening index : (\\d+)', '\\1') | default(['75'], true)) | first | int }}"
-        active_swap_bytes: "{{ (audit_live_swapfile.stdout | default('0', true) | awk '{print $3}') | default('0', true) | int }}"
-        active_firewall_engine: "{{ 'FIREWALLD (NATIVE)' if firewalld_native else ('UFW STANDALONE' if ufw_native else 'NO FIREWALL ACTIVE (WARN)') }}"
-        audit_security_grade: >-
-          {% if final_lynis_index | int >= 90 %}PENTAGONO SHIELD (MAXIMUM SECURITY POSTURE DEPLOYED)
-          {% elif final_lynis_index | int >= 80 %}GOLD COMPLIANCE BASELINE VERIFIED
-          {% elif final_lynis_index | int >= 70 %}SILVER COMPLIANCE BASELINE VERIFIED
-          {% else %}BRONZE REGULATORY DEFENSE STANDARDS MAPPED{% endif %}
-    - name: "FRAMEWORK REPORT | Generate active zero-trust security attestation sheet"
+    - name: "AUDIT REPORT | Print framework post-deployment security ledger"
       ansible.builtin.debug:
-        msg: |
+        msg: "{{ audit_ledger_content.split('\n') }}"
+      vars:
+        audit_ledger_content: |
           ======================================================================
-          📊 LIVE VERIFICATION REPORT: STAGE 2 ZERO-TRUST AUDIT ASSESSMENT COMPLETE
+          🔬 VERIFICATION COMPLETE: ZERO-TRUST STAGE 2 RUNTIME AUDIT SUITE
           ======================================================================
-          🛡️ SYSTEM ARCHITECTURE & ENVIRONMENT ATTESTATION:
-            ➔ HARDENING COMPLIANCE SCORE : [ {{ final_lynis_index }} / 100 Points achieved ]
-            ➔ REGULATORY DESIGNATION     : [ {{ audit_security_grade }} ]
-            ➔ DETECTED VOLATILE PLATFORM : {{ ansible_facts['os_family'] }} Baseline
+          📁 STORAGE ARCHITECTURE PERSISTENCE STATE:
+          {% if container_vfs_mount_check.rc == 0 %}
+            ↳ CONTAINER SUBVOLUME     : [ SECURE ] @container subvolume mounted cleanly on /var/lib/containers
+          {% else %}
+            ↳ CONTAINER SUBVOLUME     : [ WARNING ] @container subvolume missing or unmounted
+          {% endif %}
+          {% if stage1_certificate_check.stat.exists %}
+            ↳ STORAGE METRIC PROFILE  : [ COMPLIANT STAGE 1 FOUNDATIONS VERIFIED ]
+          {% else %}
+            ↳ STORAGE METRIC PROFILE  : [ UNTRACKED PROFILE (NON-OPTIMIZED CORES) ]
+          {% endif %}
+            ↳ TARGET NODE CHASSIS     : [ {{ hardware_form_factor }} ]
           ======================================================================
-          📡 BOUNDARY NETWORK PERIMETER AUDIT SUMMARY:
-            ➔ ACTIVE SHELL DEFENSE CORE  : {{ active_firewall_engine }}
-            ➔ LOOPBACK SECURITY ROUTE    : Loopback (lo) routing bypassed safely
-            ➔ INTRUSION SECURITY DAEMON  : {{ 'SNORT ACTIVE TELEMETRY ONLINE' if snort_installed else 'SNORT ENGINE NOT ACTIVE (WARN)' }}
-            ➔ AUDITD INTEGRITY IMMUTABLE : {{ 'ENFORCED (-e 2 Frozencore Lock Active)' if audit_auditd_lockdown.rc == 0 else 'RULES TAMPERABLE (WARN)' }}
+          ⚙️ HARDWARE-AWARE PLATTER MECHANICS METRICS (LIVE KERNEL STATE):
+          {% for sysctl_line in live_kernel_sysctl_metrics.stdout_lines %}
+              ↳ {{ sysctl_line }}
+          {% endfor %}
           ======================================================================
-          💾 KERNEL SUB-TOPOGRAPHY MEMORY COMPLIANCE MATRIX:
-            ➔ RAM ALLOCATION DETECTED    : {{ system_ram_gb }} GB Capacity Mapped
-            ➔ LIVE COMPRESSED ZRAM CORE  : [ {{ audit_zram_algo.stdout | default('NONE', true) | upper }} Governor Managed ]
-            ➔ PERSISTENT SWAP ALLOCATION : [ {{ 'Hardened File Boundary Verified' if active_swap_bytes | int > 0 else 'NO SWAP ALLOCATION DEPLOYED (WARN)' }} ]
-            ➔ STORAGE COMPLIANCE BADGE   : {{ 'BTRFS STANDARD LAYOUT MAPPED' if is_btrfs_layout else 'ALTERNATIVE CONTEXT RESTRUCTURING ACTIVE' }}
+          🌐 AIRTIGHT KILLSWITCH ZONE SHIFTING RECORDS:
+          {% for fw_line in live_firewall_zone_trace.stdout_lines %}
+              ↳ {{ fw_line }}
+          {% endfor %}
           ======================================================================
-          💎 MANAGEMENT PROVENANCE SECURITY INSIGNIA:
-            ➔ CHIEF DESIGN INFRASTRUCTURE ARCHITECT : Medardo Vega
-            ➔ TITLE ACCREDITATION SIGNATURE          : Self-Taught Linux Systems & SecOps Engineer
-            ➔ AUTHORITATIVE FRAMEWORK SOURCE PATH    : https://github.com
+          ⚡ BACKGROUND FRAMEWORK DAEMONS LIFECYCLE STATE:
+          {% if daemon_lifecycle_states.results[0].status.ActiveState == 'active' %}
+            ↳ REALTIME LEAK SHIELD    : [ ACTIVE ] Monitor service tracking active VPN tunnels
+          {% else %}
+            ↳ REALTIME LEAK SHIELD    : [ INACTIVE ] WARNING: Network interface leak guard daemon stopped
+          {% endif %}
+          {% if cron_cleaner_check.stat.exists %}
+            ↳ DAILY CRON CLEANER      : [ ACTIVE ] Btrfs platter-optimized maintenance script present
+          {% else %}
+            ↳ DAILY CRON CLEANER      : [ INACTIVE ] WARNING: Automated snapshot pruning profile missing
+          {% endif %}
           ======================================================================
+          {% if not stage1_certificate_check.stat.exists %}
+          💡 SECURE ARCHITECTURE NOTE : Security grades could drastically improve with an optimized Stage 1 base layer.
+          ======================================================================
+          {% endif %}
 

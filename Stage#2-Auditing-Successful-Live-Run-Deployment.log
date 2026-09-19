@@ -1,0 +1,71 @@
+[usernam@laptop]$ ansible-playbook -i hosts.ini Stage#2-Auditing.yml -K
+BECOME password: 
+
+PLAY [Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Audit)] *************************************************************************************
+
+TASK [Gathering Facts] ************************************************************************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Probe presence of Stage 1 Framework Hardening Certificate] *****************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Probe system power rail for lithium-ion battery nodes] *********************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Read raw DMI motherboard hardware chassis type integer] ********************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Verify active VFS memory mount table state for containers] *****************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Capture live kernel memory parameters from sysctl registers] ***************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Extract firewalld runtime card isolation containment states] ***************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Evaluate framework background services supervisor lifecycles] **************************************************************************************
+ok: [localhost] => (item=vpn-monitor.service)
+
+TASK [AUDIT SCAN | Verify existence of daily automated cron maintenance cleaners] *************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT SCAN | Synthesize translated hardware form-factor profile facts] ******************************************************************************************
+ok: [localhost]
+
+TASK [AUDIT REPORT | Print framework post-deployment security ledger] *************************************************************************************************
+ok: [localhost] => {
+    "msg": [
+        "======================================================================",
+        "🔬 VERIFICATION COMPLETE: ZERO-TRUST STAGE 2 RUNTIME AUDIT SUITE",
+        "======================================================================",
+        "📁 STORAGE ARCHITECTURE PERSISTENCE STATE:",
+        "  ↳ CONTAINER SUBVOLUME     : [ SECURE ] @container subvolume mounted cleanly on /var/lib/containers",
+        "  ↳ STORAGE METRIC PROFILE  : [ UNTRACKED PROFILE (NON-OPTIMIZED CORES) ]",
+        "  ↳ TARGET NODE CHASSIS     : [ LAPTOP / PORTABLE WORKSTATION ]",
+        "======================================================================",
+        "⚙ HARDWARE-AWARE PLATTER MECHANICS METRICS (LIVE KERNEL STATE):",
+        "    ↳ vm.swappiness = 150",
+        "    ↳ vm.dirty_background_bytes = 67108864",
+        "    ↳ vm.dirty_bytes = 268435456",
+        "    ↳ vm.vfs_cache_pressure = 50",
+        "======================================================================",
+        "🌐 AIRTIGHT KILLSWITCH ZONE SHIFTING RECORDS:",
+        "    ↳ ens5 wls1",
+        "    ↳ proton0 pvpnksintrf1",
+        "    ↳ tun+ wg+ proton+ pvpn+",
+        "======================================================================",
+        "⚡ BACKGROUND FRAMEWORK DAEMONS LIFECYCLE STATE:",
+        "  ↳ REALTIME LEAK SHIELD    : [ ACTIVE ] Monitor service tracking active VPN tunnels",
+        "  ↳ DAILY CRON CLEANER      : [ ACTIVE ] Btrfs platter-optimized maintenance script present",
+        "======================================================================",
+        "💡 SECURE ARCHITECTURE NOTE : Security grades could drastically improve with an optimized Stage 1 base layer.",
+        "======================================================================",
+        ""
+    ]
+}
+
+PLAY RECAP ************************************************************************************************************************************************************
+localhost                  : ok=11   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+
