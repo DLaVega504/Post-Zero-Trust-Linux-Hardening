@@ -33,7 +33,6 @@
     aide_installed: false
     firewalld_native: true
 
-
     # =========================================================================
     # DYNAMIC HARDWARE-AWARE MEMORY PROFILE METRIC SCHEMAS
     # =========================================================================
@@ -46,11 +45,9 @@
       "150": { bg_ratio: 10, ratio: 20, scale: 10,  pressure: 150 }
       "100": { bg_ratio: 10, ratio: 20, scale: 10,  pressure: 125 }
       "10":  { bg_ratio: 15, ratio: 25, scale: 10,  pressure: 100 }
-
     # =========================================================================
     # MULTI-DISTRO SYSTEM PROPERTY TRANSLATION MATRIX BLUEPRINT
     # =========================================================================
-
     distro_matrix:
       Archlinux:
         fail2ban_pkg: 'fail2ban'
@@ -181,14 +178,12 @@
 
     - name: "SCAN | Synthesize virtualization and media profiles"
       ansible.builtin.set_fact:
-        is_mechanical_drive: "{{ host_disk_rotation_raw.stdout | trim == '1' or host_disk_rotation_raw.stdout | trim == '' if host_disk_rotation_raw.stdout is defined else true }}"
-        is_virtual_machine: "{{ ansible_facts['virtualization_role'] != 'host' }}"
+        is_mechanical_drive: "{{ true if (host_disk_rotation_raw.stdout is defined and host_disk_rotation_raw.stdout | trim == '1') else true }}"
 
     - name: "SCAN | Discover primary human installation user identity (UID 1000)"
       ansible.builtin.shell: "getent passwd 1000 | cut -d: -f1"
       register: primary_owner_discovered
       changed_when: false
-
     # =========================================================================
     # PHASE 1B | SMART ASSESSMENT INTELLIGENCE AND FACT SYNTHESIS
     # =========================================================================
@@ -198,7 +193,7 @@
         oom_engine_selection: "{{ 'earlyoom' if (ansible_facts['memtotal_mb'] | int < 8192) else 'systemd-oomd' }}"
         target_compression: "{{ 'lz4' if (ansible_facts['memtotal_mb'] | int < 8192) else 'zstd' }}"
 
-        # Compressed inline string synthesis completely eliminates spaces and raw newlines (\n)
+        # Fixed: Compressed inline paths prevent unexpected white spaces and raw newline loops (\n)
         target_swappiness: "{{ '150' if (ansible_facts['memtotal_mb'] | int < 8192) else ('100' if (ansible_facts['memtotal_mb'] | int < 16384) else '10') }}"
         target_swapfile_size_gb: "{{ '8' if (ansible_facts['memtotal_mb'] | int < 8192) else (((ansible_facts['memtotal_mb'] | int / 1024) * 1.5) | round(0) | int | string) }}"
         
@@ -231,11 +226,9 @@
       failed_when: false
       changed_when: false
       when: "not ansible_check_mode"
-
     # =========================================================================
     # PHASE 3 | AUTOMATED BTRFS LIFECYCLE RECONSTRUCTION ENGINE
     # =========================================================================
-
     - name: "BTRFS | SANITIZATION | Temporarily stop background snapshot monitor to free VFS locks"
       ansible.builtin.systemd:
         name: "{{ 'grub-btrfsd' if ansible_facts['os_family'] in ['Archlinux', 'Debian'] else 'grub-btrfs' }}"
@@ -275,14 +268,13 @@
       changed_when: false
       failed_when: false
       when: "is_btrfs_layout is defined and is_btrfs_layout | bool and not ansible_check_mode"
-
-    - name: "BTRFS | LEDGER | Commit standardized subvolumes via explicit Mount state declarations"
+    - name: "BTRFS | LEDGER | Commit standardized subvolumes to physical fstab parameters"
       ansible.posix.mount:
         path: "{{ item.mountpoint }}"
         src: "UUID={{ active_root_uuid }}"
         fstype: "btrfs"
         opts: "rw,noatime,space_cache=v2,compress=zstd:1,nodev,nosuid,nofail,subvol=/{{ item.expected_subvol }}"
-        state: mounted
+        state: present
       loop:
         - { mountpoint: '/swap', expected_subvol: "{{ expected_swap_subvol }}" }
         - { mountpoint: '/var/log', expected_subvol: "{{ expected_log_subvol }}" }
@@ -364,18 +356,19 @@
       loop:
         - "/etc/sysctl.d/99-swappiness.conf"
         - "/etc/sysctl.d/50-memory-tuning.conf"
+
     # =========================================================================
     # PHASE 4C | UNIFIED HARDWARE-AWARE MEMORY PROFILE METRIC TARGETS
     # =========================================================================
     - name: "HARDENING | MEMORY MAPS | Resolve active structural HDD dictionary key facts"
       ansible.builtin.set_fact:
-        active_hdd_card: "{{ hdd_matrix_blueprint[target_swappiness | string] }}"
-      when: "is_mechanical_drive | bool and not is_virtual_machine | bool"
+        active_hdd_card: "{{ hdd_matrix_blueprint[ '' ~ target_swappiness ~ '' ] }}"
+      when: "is_mechanical_drive | bool"
 
     - name: "HARDENING | MEMORY MAPS | Resolve active structural SSD dictionary key facts"
       ansible.builtin.set_fact:
-        active_ssd_card: "{{ ssd_matrix_blueprint[target_swappiness | string] }}"
-      when: "not (is_mechanical_drive | bool and not is_virtual_machine | bool)"
+        active_ssd_card: "{{ ssd_matrix_blueprint[ '' ~ target_swappiness ~ '' ] }}"
+      when: "not is_mechanical_drive | bool"
 
     - name: "HARDENING | MEMORY MAPS | Compile optimized dynamic sysctl hardware profile"
       ansible.builtin.copy:
@@ -387,7 +380,7 @@
           # =================================================================
           vm.swappiness = {{ target_swappiness }}
 
-          {% if is_mechanical_drive | bool and not is_virtual_machine | bool %}
+          {% if is_mechanical_drive | bool %}
           {% if active_hdd_card.bytes_mode | bool %}
           vm.dirty_background_bytes = {{ active_hdd_card.bg_bytes }}
           vm.dirty_bytes = {{ active_hdd_card.dirty_bytes }}
@@ -408,6 +401,7 @@
         group: root
       become: true
       notify: "Trigger Active System Kernel Flush"
+
     # =========================================================================
     # PHASE 5 | CRYPTOGRAPHIC SECURE DATA VAULT MANAGEMENT ORCHESTRATION
     # =========================================================================
@@ -583,16 +577,6 @@
         group: root
       notify: "Trigger Active System Kernel Flush"
 
-    - name: "HARDENING | Secure virtual execution interfaces securely inside fstab storage arrays"
-      ansible.posix.mount:
-        path: "{{ item.path }}"
-        src: "tmpfs"
-        fstype: "tmpfs"
-        opts: "{{ item.opts }}"
-        state: "mounted"
-      loop:
-        - { path: '/tmp', opts: 'defaults,nosuid,nodev,size=50%' }
-        - { path: '/dev/shm', opts: 'defaults,noexec,nosuid,nodev,size=1G' }
     # =========================================================================
     # PHASE 9 | DYNAMIC GRUB PBKDF2 LOCKOUT & HARDENED KERNEL PARAMETERS
     # =========================================================================
@@ -650,8 +634,17 @@
       ansible.builtin.command: "dracut --force"
       when: "(ansible_facts['os_family'] == 'RedHat' or ansible_facts['os_family'] == 'Suse') and not boot_configuration_bypass | bool and not ansible_check_mode"
 
+    - name: "BOOTLOADER HARDENING | Prevent grub-btrfs from stalling on Legacy hardware"
+      ansible.builtin.copy:
+        dest: "/etc/default/grub-btrfs/config"
+        content: |
+          GRUB_BTRFS_SKIP_HARDWARE_CHECK="true"
+          GRUB_BTRFS_SKIP_SNAPSHOTS="true"
+        mode: '0644'
+      when: "ansible_facts['os_family'] == 'Archlinux'"
+
     - name: "BOOTLOADER COMPILE | Universal Multi-Distro GRUB Flash Loop"
-      ansible.builtin.command: "{{ distro_matrix[ansible_facts['os_family']]['grub_compile_cmd'] }} -o {{ distro_matrix[ansible_facts['os_family']]['grub_config_uefi'] if is_uefi_mode else distro_matrix[ansible_facts['os_family']]['grub_config_bios'] }}"
+      ansible.builtin.command: "{{ distro_matrix[ansible_facts['os_family']]['grub_compile_cmd'] }} -o {{ distro_matrix[ansible_facts['os_family']]['grub_config_bios'] }}"
       when: "not ansible_check_mode and ansible_facts['os_family'] in distro_matrix"
 
     # =========================================================================
@@ -690,8 +683,10 @@
         firewall-cmd --permanent --zone=trusted --add-source=::1/128
         
         for interface_regex in "tun+" "wg+" "proton+" "pvpn+"; do
-           firewall-cmd --permanent --zone=trusted --add-source="bpf:io.github.firewalld.interface:{{ interface_regex }}" 2>/dev/null || \
+           {% raw %}
+           firewall-cmd --permanent --zone=trusted --add-source="bpf:io.github.firewalld.interface:${interface_regex}" 2>/dev/null || \
            firewall-cmd --permanent --zone=trusted --add-interface="${interface_regex}" 2>/dev/null || true
+           {% endraw %}
         done
         
         for physical_card in $(echo "{{ active_network_interfaces.stdout | default('wls1') }}" | tr ',' ' '); do
@@ -747,11 +742,9 @@
           tmpfs /tmp tmpfs defaults,nosuid,nodev,size=50% 0 0
           tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev,size=1G 0 0
       become: true
-
     # =========================================================================
     # PHASE 10C | BACKGROUND UTILITY STATE INITIALIZATIONS
     # =========================================================================
-
     - name: "PHASE 10 | SNAPPER CONFIG | Align boot configuration lookup metrics"
       ansible.builtin.lineinfile:
         path: "/etc/default/grub-btrfs/config"
