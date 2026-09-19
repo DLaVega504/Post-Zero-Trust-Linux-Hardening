@@ -1,0 +1,283 @@
+
+PLAY [Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Core)] ***
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [SCAN | Probe motherboard boot firmware directory existence] **************
+ok: [localhost]
+
+TASK [SCAN | Detect active root filesystem source device handle] ***************
+ok: [localhost]
+
+TASK [SCAN | Detect active boot partition source device handle] ****************
+ok: [localhost]
+
+TASK [SCAN | Detect active root filesystem type format signature] **************
+ok: [localhost]
+
+TASK [SCAN | Discover absolute persistent root device UUID] ********************
+ok: [localhost]
+
+TASK [SCAN | Discover running network interfaces directly from kernel space] ***
+ok: [localhost]
+
+TASK [SCAN | Read active initramfs hook parameters cleanly] ********************
+ok: [localhost]
+
+TASK [SCAN | Detect drive media rotation profiles directly from hardware controller] ***
+ok: [localhost]
+
+TASK [SCAN | Synthesize virtualization and media profiles] *********************
+ok: [localhost]
+
+TASK [SCAN | Discover primary human installation user identity (UID 1000)] *****
+ok: [localhost]
+
+TASK [SCAN | Probe existence of Stage 1 Framework Hardening Certificate] *******
+ok: [localhost]
+
+TASK [SCAN | Probe system power rail for lithium-ion battery nodes] ************
+ok: [localhost]
+
+TASK [SCAN | Read raw DMI motherboard hardware chassis type integer] ***********
+ok: [localhost]
+
+TASK [SCAN | Synthesize translated hardware form-factor profile facts] *********
+ok: [localhost]
+
+TASK [SCAN | Synthesize primary system hardware and layout facts] **************
+ok: [localhost]
+
+TASK [SCAN | Evaluate dependent topo structural safety definitions] ************
+ok: [localhost]
+
+TASK [SMART EVALUATOR | Determine if layout matches defined standards or triggers bypass fallback] ***
+ok: [localhost]
+
+TASK [COMPLIANCE | Execute initial pre-hardening baseline audit scan] **********
+ok: [localhost]
+
+TASK [BTRFS | TOPO | Initialize missing mount point directory paths on host tree] ***
+ok: [localhost] => (item={'mountpoint': '/swap'})
+ok: [localhost] => (item={'mountpoint': '/var/log'})
+ok: [localhost] => (item={'mountpoint': '/var/cache/pacman/pkg'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/docker'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/flatpak'})
+ok: [localhost] => (item={'mountpoint': '/srv'})
+ok: [localhost] => (item={'mountpoint': '/.snapshots'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/containers'})
+
+TASK [BTRFS | LEDGER | Commit standardized subvolumes to physical fstab parameters] ***
+changed: [localhost] => (item={'mountpoint': '/swap', 'expected_subvol': '@swap'})
+ok: [localhost] => (item={'mountpoint': '/var/log', 'expected_subvol': '@log'})
+ok: [localhost] => (item={'mountpoint': '/var/cache/pacman/pkg', 'expected_subvol': '@cache'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/docker', 'expected_subvol': '@docker'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/flatpak', 'expected_subvol': '@flatpak'})
+ok: [localhost] => (item={'mountpoint': '/srv', 'expected_subvol': '@srv'})
+ok: [localhost] => (item={'mountpoint': '/.snapshots', 'expected_subvol': '@snapshots'})
+ok: [localhost] => (item={'mountpoint': '/var/lib/containers', 'expected_subvol': '@container'})
+
+TASK [SWAP CONFIG | SANITIZATION | Purge legacy unmanaged swaps cleanly] *******
+changed: [localhost]
+
+TASK [SWAP CONFIG | ALLOCATION | Atomic execution of uncompressed Btrfs NoCoW contiguous allocation block] ***
+changed: [localhost]
+
+TASK [SWAP CONFIG | ALLOCATION | Traditional allocation block if target platform is non-btrfs filesystem] ***
+skipping: [localhost]
+
+TASK [SWAP CONFIG | LEDGER | Verify swap mounts are persistent inside fstab array] ***
+changed: [localhost]
+
+TASK [ZRAM PROVISION | Deploy chosen compression algorithm setup matching scanned hardware profile] ***
+ok: [localhost]
+
+TASK [OOM SERVICES | Handle live alignment transitions for active memory daemons] ***
+ok: [localhost]
+
+TASK [SYSCTL | SANITIZATION | Purge legacy conflicting standalone swappiness map parameters] ***
+ok: [localhost] => (item=/etc/sysctl.d/99-swappiness.conf)
+ok: [localhost] => (item=/etc/sysctl.d/50-memory-tuning.conf)
+
+TASK [HARDENING | MEMORY MAPS | Resolve active structural HDD dictionary key facts] ***
+ok: [localhost]
+
+TASK [HARDENING | MEMORY MAPS | Resolve active structural SSD dictionary key facts] ***
+skipping: [localhost]
+
+TASK [HARDENING | MEMORY MAPS | Compile optimized dynamic sysctl hardware profile] ***
+ok: [localhost]
+
+TASK [VAULT ENGINE | Interrogate raw physical block storage boundary footprint sizes] ***
+ok: [localhost]
+
+TASK [VAULT ENGINE | Synthesize dynamic proportional mathematical storage profiles] ***
+ok: [localhost]
+
+TASK [VAULT ENGINE | Construct automated multi-layer quota-enforcing wrapper utilities] ***
+ok: [localhost]
+
+TASK [TELEMETRY | INTEL | Evaluate host drive architecture for intrusion suite allocation] ***
+ok: [localhost] => {
+    "msg": [
+        "======================================================================",
+        "🔍 HARDWARE TELEMETRY INTERROGATION GATEWAY ACTIVE",
+        "======================================================================",
+        "↳ ACTIVE DRIVE PROFILE DETECTED: [ MECHANICAL PLATTER DRIVE (HDD) ]",
+        "↳ POLICY ENFORCEMENT DECISION  : [ SKIP ] Bypassing heavy I/O database loops to prevent disk thrashing.",
+        "======================================================================"
+    ]
+}
+
+TASK [INTRUSION DETECTION | AIDE | Initialize baseline database configuration mapping] ***
+skipping: [localhost]
+
+TASK [INTRUSION DETECTION | AIDE | Render real-time database initialization log arrays] ***
+skipping: [localhost]
+
+TASK [INTRUSION DETECTION | TRIPWIRE | Map administrative global and local keys into RAM space] ***
+skipping: [localhost]
+
+TASK [INTRUSION DETECTION | TRIPWIRE | Inject credentials via non-interactive automated loop] ***
+skipping: [localhost]
+
+TASK [INTRUSION DETECTION | TRIPWIRE | Render real-time signature compilation logs] ***
+skipping: [localhost]
+
+TASK [INTRUSION DETECTION | SANITIZATION | Volatile RAM sweep purging plaintext key variables] ***
+skipping: [localhost]
+
+TASK [HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl] ***
+ok: [localhost]
+
+TASK [BOOT AUDIT | Scan if GRUB bootloader password protection is already active] ***
+ok: [localhost]
+
+TASK [BOOT HARDENING | Prompt installer for Master GRUB bootloader passphrase] ***
+skipping: [localhost]
+
+TASK [BOOT HARDENING | Generate cryptographically secure PBKDF2 hash from passphrase] ***
+skipping: [localhost]
+
+TASK [BOOT HARDENING | Inject secure master credentials into user customized parameters] ***
+skipping: [localhost]
+
+TASK [BOOT HARDENING | Inject advanced kernel containment parameters into active boot configurations] ***
+ok: [localhost]
+
+TASK [BOOT Hardening | Enable GRUB Cryptodisk if /boot is within the encrypted volume bounds] ***
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke mkinitcpio compilation] *************************
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke update-initramfs orchestration] *****************
+skipping: [localhost]
+
+TASK [RAMDISK REBUILD | Invoke Dracut hardware synchronization loops] **********
+skipping: [localhost]
+
+TASK [BOOTLOADER HARDENING | Prevent grub-btrfs from stalling on Legacy hardware] ***
+changed: [localhost]
+
+TASK [BOOTLOADER COMPILE | Universal Multi-Distro GRUB Flash Loop] *************
+changed: [localhost]
+
+TASK [USERLAND | SECOPS | Establish dynamic framework operations access group] ***
+ok: [localhost]
+
+TASK [USERLAND | SECOPS | Assign primary discovered user context to framework permissions] ***
+ok: [localhost]
+
+TASK [SECURITY | SUDOERS | Deploy granular role-based policy matrices safely] ***
+ok: [localhost]
+
+TASK [FIREWALLD | ENFORCE INTERFACE CONTAINMENT | Set baseline architecture zones cleanly] ***
+changed: [localhost]
+
+TASK [FIREWALL LABELS | Deploy global interface switching script tools] ********
+ok: [localhost]
+
+TASK [VAULT LABELS | Deploy localized vault control shortcut profiles] *********
+ok: [localhost]
+
+TASK [USERLAND | HOOK | Append persistent terminal initialization checks to system bash template] ***
+ok: [localhost]
+
+TASK [HARDENING | Secure virtual execution interfaces securely inside fstab storage arrays] ***
+ok: [localhost]
+
+TASK [PHASE 10 | SNAPPER CONFIG | Align boot configuration lookup metrics] *****
+changed: [localhost]
+
+TASK [PHASE 10 | SNAPPER CRYPTO | Enforce container probe authentication permissions] ***
+changed: [localhost]
+
+TASK [PHASE 10 | SNAPPER HARDENING | Bypass hardware probe block gates for encryption containers] ***
+ok: [localhost]
+
+TASK [PHASE 10 | SNAPPER ENFORCEMENT | Secure background snapshot monitoring daemon] ***
+ok: [localhost]
+
+TASK [SECURITY | ENGINE | Deploy real-time background VPN leak monitoring daemon] ***
+ok: [localhost]
+
+TASK [SECURITY | DAEMON | Initialize background network perimeter service wrapper] ***
+ok: [localhost]
+
+TASK [SECURITY | ENFORCEMENT | Launch background leak monitor utility service] ***
+ok: [localhost]
+
+TASK [STORAGE | MAINTENANCE | Deploy daily automated snapshot pruning profile utility] ***
+ok: [localhost]
+
+TASK [STORAGE | Force override FDE detection for Btrfs on LUKS2] ***************
+ok: [localhost]
+
+TASK [COMPLIANCE | Run post-deployment security hardening verification scan] ***
+ok: [localhost]
+
+TASK [COMPLIANCE | Calculate real-time framework execution metrics] ************
+ok: [localhost]
+
+TASK [COMPLIANCE | Compute final structural point values] **********************
+ok: [localhost]
+
+TASK [FRAMEWORK REPORT | Complete zero-trust post-hardening play summary] ******
+ok: [localhost] => {
+    "msg": [
+        "======================================================================",
+        "🏆 SUCCESS: STAGE 2 HARDENING ACTIVE HARDENING ENGINE COMPLETE!",
+        "======================================================================",
+        "🛡️ SMART TOPO ASSESSMENTS SELECTION RECORDS:",
+        "  ↳ STORAGE METRIC PROFILE     : [ UNTRACKED PROFILE (NON-OPTIMIZED CORES) ]",
+        "  ↳ FIRMWARE PLATFORM DETECTED : [BIOS LEGACY MBR SYSTEM]",
+        "  ↳ TARGET HARDWARE CHASSIS    : [ LAPTOP / PORTABLE WORKSTATION ]",
+        "  ↳ KERNEL HARDENED STORAGE    : [Isolated Contiguous 8GB Swap allocation verified]",
+        "======================================================================",
+        "⚙️ HARDWARE-AWARE INTEL RECONNAISSANCE SUMMARY:",
+        "  ↳ CONTEXTUAL RAM TIER SECTOR : 4 GB DETECTED",
+        "  ↳ DYNAMIC SWAPPINESS MARKER  : vm.swappiness = 150 INJECTED",
+        "  ↳ ASSIGNED COMPRESSION CORE  : ZRAM MODULE ALIGNED TO [ LZ4 ]",
+        "  ↳ DEPLOYED OOM PROTECTOR     : ACTIVE PERIMETER MANAGED VIA [ EARLYOOM ]",
+        "======================================================================",
+        "💎 SYSTEM PROVENANCE SECURITY ATTESTATION:",
+        "  ↳ CHIEF FRAMEWORK ARCHITECT  : Medardo Vega",
+        "  ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer",
+        "  ↳ AUTHORITATIVE SOURCE PATH  : https://github.com/DlaVega504",
+        "======================================================================",
+        "📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:",
+        "  ↳ BEFORE DEPLOYMENT BASELINE : 65 points",
+        "  ↳ AFTER ACTIVE POST-HARDENING: 82 points",
+        "  ↳ STAGE 2 DELTA IMPROVEMENT  : +17 points achieved!",
+        "  ↳ COMPLIANCE ALIGNMENT NOTE  : Security profiles could drastically improve with an optimized Stage 1 base layer.",
+        "  ↳ OVERALL SYSTEM DESIGN Designation: 🥇🛡️ [ GOLD LEVEL SHIELD ] 🛡️🥇 ",
+        "======================================================================",
+        ""
+    ]
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=59   changed=9    unreachable=0    failed=0    skipped=15   rescued=0    ignored=0   
+
