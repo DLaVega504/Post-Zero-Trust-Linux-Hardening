@@ -1019,8 +1019,16 @@
             ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer
             ↳ AUTHORITATIVE SOURCE PATH  : https://github.com/DlaVega504
           ======================================================================
+          ⚠️  CRITICAL POST-HARDENING DEPLOYMENT ACTIONS REQUIRED:
+            ↳ AUTHENTICATION MATRIX UPGRADE NOTICE:
+              To finalize your Gold Shield posture and re-encrypt your system credentials
+              under your newly deployed 65,536-round PAM rules, you MUST execute:
+              1. Update regular account hash: run 'passwd'
+              2. Update system admin hash   : run 'sudo passwd root'
+          ======================================================================
           📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:
-            ↳ BEFORE DEPLOYMENT BASELINE : {{ lynis_pre_score | default('65') }} points
+:
+ BEFORE DEPLOYMENT BASELINE : {{ lynis_pre_score | default('65') }} points
             ↳ AFTER ACTIVE POST-HARDENING: {{ lynis_post_score | default('82') }} points
             ↳ STAGE 2 DELTA IMPROVEMENT  : +{{ stage2_point_delta | default('17') }} points achieved!
           {% if not stage1_certificate_check.stat.exists %}
