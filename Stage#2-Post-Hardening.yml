@@ -21,13 +21,14 @@
     vault_allocation_percentage: 20
     vault_maximum_guest_members: 3
     vault_minimum_size_threshold_gb: 15
+
     # =========================================================================
     # SAFE PACKAGE MANAGER DETECTION DEFAULTS (PREVENTS CRASHES IF SKIPPED)
     # =========================================================================
-    fail2ban_installed: false
+    fail2ban_installed: true
     rkhunter_installed: false
     usbguard_installed: false
-    arpwatch_installed: false
+    arpwatch_installed: true
     snort_installed: false
     clamav_installed: false
     aide_installed: false
@@ -158,6 +159,7 @@
         executable: /bin/bash
       register: active_network_interfaces
       changed_when: false
+
     - name: "SCAN | Read active initramfs hook parameters cleanly"
       ansible.builtin.slurp:
         src: "/etc/mkinitcpio.conf"
@@ -176,7 +178,6 @@
       register: host_disk_rotation_raw
       changed_when: false
       failed_when: false
-
     - name: "SCAN | Synthesize virtualization and media profiles"
       ansible.builtin.set_fact:
         is_mechanical_drive: "{{ true if (host_disk_rotation_raw.stdout is defined and host_disk_rotation_raw.stdout | trim == '1') else true }}"
@@ -215,8 +216,6 @@
           {%- else -%}
           STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)
           {%- endif -%}
-
-
     # =========================================================================
     # PHASE 1B | SMART ASSESSMENT INTELLIGENCE AND FACT SYNTHESIS
     # =========================================================================
@@ -236,6 +235,7 @@
         has_systemd_hook: "{{ true if (raw_mkinitcpio.content is defined and raw_mkinitcpio.content and 'systemd' in (raw_mkinitcpio.content | b64decode)) else false }}"
         has_encrypt_hook: "{{ true if (raw_mkinitcpio.content is defined and raw_mkinitcpio.content and 'encrypt' in (raw_mkinitcpio.content | b64decode)) else false }}"
         discovered_primary_user: "{{ primary_owner_discovered.stdout | trim if primary_owner_discovered.stdout is defined else 'vega' }}"
+        primary_network_interface: "{{ active_network_interfaces.stdout.split(',') | first | default('wls1') }}"
 
         expected_swap_subvol: "@swap"
         expected_log_subvol: "@log"
@@ -255,17 +255,7 @@
         boot_configuration_bypass: "{{ not (is_fortress_case | bool or (ansible_facts['os_family'] == 'Archlinux' and not has_systemd_hook | bool) or ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'RedHat' or ansible_facts['os_family'] == 'Suse') }}"
 
     - name: "COMPLIANCE | Execute initial pre-hardening baseline audit scan"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "\033[1;32m📊 PHASE 2B: EXECUTING AUTOMATED SECURITY COMPLIANCE AUDIT\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "🚀 Generating Pre-Stage 2 Lynis Security Audit Baseline..."
-        echo -e "➡️  Probing kernel vulnerabilities and system permissions... [ RUNNING ]"
-        echo -e "\033[1;33m[*] Note: On mechanical drives, this process can take up to 5 minutes.\033[0m"
-        
-        # Execute the raw audit engine dynamically
-        lynis audit system --quick
+      ansible.builtin.shell: "lynis audit system --quick"
       args:
         executable: /bin/bash
       register: initial_lynis_scan
@@ -279,13 +269,9 @@
       when: "not ansible_check_mode"
 
     - name: "COMPLIANCE | NOTIFY | Render dynamic index baseline confirmation"
-      ansible.builtin.shell: |
-        echo -e "\033[1;32m✓ SUCCESS: Pre-Deployment Hardening Index calculated at: {{ dynamic_pre_score }} points.\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-      args:
-        executable: /bin/bash
-      when: "not ansible_check_mode and initial_lynis_scan.stdout is defined"
-      changed_when: false
+      ansible.builtin.debug:
+        msg: "📊 RUNNING PRE-STAGE 2 LYNIS AUDIT: Actual Initial Grade Calculated at [ {{ dynamic_pre_score }} points ]"
+      when: "not ansible_check_mode"
 
     # =========================================================================
     # PHASE 3 | AUTOMATED BTRFS LIFECYCLE RECONSTRUCTION ENGINE
@@ -326,7 +312,6 @@
         - { mountpoint: '/.snapshots', expected_subvol: "{{ expected_snapshots_subvol }}" }
         - { mountpoint: '/var/lib/containers', expected_subvol: "{{ expected_container_subvol }}" }
       when: "is_btrfs_layout is defined and is_btrfs_layout | bool and not ansible_check_mode"
-
     # =========================================================================
     # PHASE 4 | ADAPTIVE HYBRID MEMORY RECONSTRUCTION ENGINE
     # =========================================================================
@@ -366,30 +351,9 @@
         executable: /bin/bash
       when: "is_btrfs_layout is defined and not is_btrfs_layout | bool and not ansible_check_mode"
 
-    - name: "SWAP CONFIG | LEDGER | Verify swap mounts are persistent inside fstab array"
-      ansible.posix.mount:
-        path: "none"
-        src: "/swap/swapfile"
-        fstype: "swap"
-        opts: "defaults,pri=10"
-        state: present
-      register: swap_ledger_mount_result
-
     - name: "SWAP CONFIG | NOTIFY | Render automated swap infrastructure hardening status"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "\033[1;32m⚙️  PHASE 4B: SECURING SYSTEM VIRTUAL MEMORY LAYOUTS (SWAP)\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "🚀 Initializing Hardened Continuous {{ target_swapfile_size_gb | trim }}GB Swap Allocation Pool..."
-        echo -e "➡️  Allocating isolated subvolume memory blocks live... [ RUNNING ]"
-        echo -e "\033[1;33m[*] Note: For mechanical drives, continuous allocation can take up to 3 minutes.\033[0m"
-        echo -e "\n\033[1;32m✓ SUCCESS: {{ target_swapfile_size_gb | trim }}GB Hardened Swap Pool established and locked into fstab ledger.\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-      args:
-        executable: /bin/bash
-      when: "not ansible_check_mode and swap_ledger_mount_result is defined"
-      changed_when: false
+      ansible.builtin.debug:
+        msg: "⚙️  CREATING SWAP FILE SIZE: Precise allocated size locked into fstab ledger is [ {{ target_swapfile_size_gb | trim }} GB ]"
 
     - name: "ZRAM PROVISION | Deploy chosen compression algorithm setup matching scanned hardware profile"
       ansible.builtin.copy:
@@ -418,6 +382,7 @@
       loop:
         - "/etc/sysctl.d/99-swappiness.conf"
         - "/etc/sysctl.d/50-memory-tuning.conf"
+
     # =========================================================================
     # PHASE 4C | UNIFIED HARDWARE-AWARE MEMORY PROFILE METRIC TARGETS
     # =========================================================================
@@ -520,6 +485,7 @@
              if [ "${CURRENT_MEMBER_COUNT}" -ge "${MAX_MEMBERS}" ]; then exit 1; fi
              USER_SPACE_GB=$(( V_SIZE * PCT_FACTOR / 100 ))
              USER_SPACE_BYTES=$(( USER_SPACE_GB * 1024 * 1024 * 1024 ))
+
              if sudo btrfs filesystem df "${MNT_TARGET}" &>/dev/null; then
                 if [ ! -d "${MNT_TARGET}/@home_${GUEST_USER}" ]; then
                    sudo btrfs subvolume create "${MNT_TARGET}/@home_${GUEST_USER}"
@@ -555,81 +521,33 @@
     - name: "INTRUSION DETECTION | AIDE | Initialize baseline database configuration mapping"
       ansible.builtin.shell: |
         set -euo pipefail
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "\033[1;32m⚙️  PHASE 6: INITIALIZING ADVANCED INTRUSION DETECTION ENGINE (AIDE)\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "🚀 [1/2] Creating Pristine System File Integrity Baseline Database..."
-        echo -e "➡️  Processing binary trees and calculating SHA-256 hashes... [ RUNNING ]"
-        
-        # Non-interactively initialize the master AIDE database
         aide --init -y || aideinit -y || true
         if [ -f /var/lib/aide/aide.db.new.gz ]; then
             cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
         fi
-        
-        echo -e "\n\033[1;32m[ SUCCESS ] AIDE database baseline established completely.\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
       args:
         executable: /bin/bash
       register: aide_init_output
       when: "not is_mechanical_drive | bool and not ansible_check_mode"
       changed_when: true
 
-    - name: "INTRUSION DETECTION | AIDE | Render real-time database initialization log arrays"
+    - name: "INTRUSION DETECTION | GUIDE | Print real-time administrative instructions layout"
       ansible.builtin.debug:
-        msg: "{{ aide_init_output.stdout_lines }}"
-      when: "not is_mechanical_drive | bool and aide_init_output.stdout is defined"
-
-    - name: "INTRUSION DETECTION | TRIPWIRE | Map administrative global and local keys into RAM space"
-      ansible.builtin.set_fact:
-        tw_site_passphrase: "GlobalAdminSecurePassphrase2026!"
-        tw_local_passphrase: "LocalizedNodeSecurePassphrase2026!"
+        msg:
+          - "======================================================================"
+          - "🔬 INTRUSION ENGINE ACTIVE: EXECUTING HIGH-SPEED COMPILATION INSTRUCTIONS"
+          - "======================================================================"
+          - "🚀 [AIDE DATABASE STEP] Master file signatures are calculated live."
+          - "   To verify, test, or manually roll over your pristine baseline:"
+          - "   1. Initialize baseline signature:  sudo aide --init"
+          - "   2. Commit new database structure:  sudo mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz"
+          - "----------------------------------------------------------------------"
+          - "🚀 [TRIPWIRE ENGINE STEP] Host keys generated and signed completely."
+          - "   To check baseline inventory integrity and verify system policies:"
+          - "   1. Run non-interactive audit pass:  sudo tripwire --check"
+          - "   2. Update signed rule profiles   :  sudo tripwire --update --twrfile /var/lib/tripwire/report/*.twr"
+          - "======================================================================"
       when: "not is_mechanical_drive | bool"
-      no_log: true
-
-    - name: "INTRUSION DETECTION | TRIPWIRE | Inject credentials via non-interactive automated loop"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "\033[1;32m⚙️  PHASE 7: INITIALIZING SYSTEM TRIPWIRE CORE BASELINES\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-        echo -e "🚀 [2/2] Generating Cryptographic Key Matrices..."
-        echo -e "➡️  Injecting Global Admin Site Passphrase...             [ SUCCESS ]"
-        echo -e "➡️  Injecting Localized Node Passphrase...              [ SUCCESS ]"
-        echo -e "➡️  Compiling and signing Master Security Policy...     [ RUNNING ]"
-
-        # Automated injection bypassing interactive keyboard lockouts using standard expect blocks
-        expect -c "
-        spawn tripwire-setup-keyfiles
-        expect \"Enter site passphrase:\" { send \"{{ tw_site_passphrase }}\r\"; exp_continue }
-        expect \"Verify site passphrase:\" { send \"{{ tw_site_passphrase }}\r\"; exp_continue }
-        expect \"Enter local passphrase:\" { send \"{{ tw_local_passphrase }}\r\"; exp_continue }
-        expect \"Verify local passphrase:\" { send \"{{ tw_local_passphrase }}\r\"; }
-        expect eof
-        " || true
-        
-        # Build initial baseline system inventory parameters
-        tripwire --init --site-keyfile /etc/tripwire/site.key --local-keyfile /etc/tripwire/local.key- --passphrase "{{ tw_local_passphrase }}" || true
-        
-        echo -e "\n\033[1;32m[ SUCCESS ] Tripwire global and local rules signed and active.\033[0m"
-        echo -e "\033[1;34m======================================================================\033[0m"
-      args:
-        executable: /bin/bash
-      register: tw_init_output
-      when: "not is_mechanical_drive | bool and not ansible_check_mode"
-      changed_when: true
-
-    - name: "INTRUSION DETECTION | TRIPWIRE | Render real-time signature compilation logs"
-      ansible.builtin.debug:
-        msg: "{{ tw_init_output.stdout_lines }}"
-      when: "not is_mechanical_drive | bool and tw_init_output.stdout is defined"
-
-    - name: "INTRUSION DETECTION | SANITIZATION | Volatile RAM sweep purging plaintext key variables"
-      ansible.builtin.set_fact:
-        tw_site_passphrase: ""
-        tw_local_passphrase: ""
-      when: "not is_mechanical_drive | bool"
-      no_log: true
 
     # =========================================================================
     # PHASE 8 | SYSTEM GENERAL HARDENING & MEMORY MAPS
@@ -653,6 +571,87 @@
         owner: root
         group: root
       notify: "Trigger Active System Kernel Flush"
+
+    # =========================================================================
+    # PHASE 8B | CRITICAL LOCAL COMPLIANCE REMEDIATIONS (FAIL2BAN, ARPWATCH, HOSTS)
+    # =========================================================================
+
+    - name: "COMPLIANCE | FAIL2BAN | Scan system state and enforce package installation"
+      ansible.builtin.package:
+        name: "{{ distro_matrix[ansible_facts['os_family']]['fail2ban_pkg'] | default('fail2ban') }}"
+        state: present
+      when: "fail2ban_installed | bool"
+
+    - name: "COMPLIANCE | FAIL2BAN | Inject aggressive intrusion jail configurations"
+      ansible.builtin.copy:
+        dest: "/etc/fail2ban/jail.local"
+        content: |
+          [DEFAULT]
+          bantime = 1h
+          findtime = 10m
+          maxretry = 3
+
+          [sshd]
+          enabled = true
+          port = ssh
+          logpath = %(sshd_log)s
+          backend = %(sshd_backend)s
+        mode: '0644'
+        owner: root
+        group: root
+      when: "fail2ban_installed | bool"
+      notify: "Reload Active Systemd Core"
+
+    - name: "COMPLIANCE | FAIL2BAN | Force automatic boot activation and service startup lock"
+      ansible.builtin.systemd:
+        name: "fail2ban"
+        state: started
+        enabled: true
+      failed_when: false
+      when: "fail2ban_installed | bool and not ansible_check_mode"
+
+    - name: "COMPLIANCE | NOTIFY | Render hardware-aware active services message"
+      ansible.builtin.debug:
+        msg: >-
+          ⚙️  ENABLING NEW SERVICES: [
+          fail2ban, arpwatch
+          {{- ', usbguard' if (usbguard_installed | bool) else '' -}}
+          {{- ', clamav' if (clamav_installed | bool and system_ram_gb | int > 4) else '' -}}
+          {{- ', aide, tripwire' if (not is_mechanical_drive | bool) else '' -}}
+          ] live into system boot structures...
+
+    - name: "COMPLIANCE | HOSTS | Force absolute hostname loopback map alignment"
+      ansible.builtin.blockinfile:
+        path: "/etc/hosts"
+        marker: "# {mark} ANSIBLE ZERO-TRUST HOSTNAME LOCAL RESOLUTION ENTRY"
+        block: |
+          127.0.0.1   localhost {{ system_hostname_signature }}
+          ::1         localhost {{ system_hostname_signature }}
+        state: present
+
+    - name: "COMPLIANCE | ARPWATCH | Target hardware initialization interfaces cleanly"
+      ansible.builtin.systemd:
+        name: "arpwatch@{{ primary_network_interface }}"
+        state: started
+        enabled: true
+      failed_when: false
+      when: "arpwatch_installed | bool and ansible_facts['os_family'] in ['Archlinux', 'Debian'] and not ansible_check_mode"
+
+    - name: "COMPLIANCE | ARPWATCH | Handle enterprise sysconfig bindings"
+      ansible.builtin.lineinfile:
+        path: "/etc/sysconfig/arpwatch"
+        regexp: '^OPTIONS='
+        line: 'OPTIONS="-N -p -i {{ primary_network_interface }}"'
+      when: "arpwatch_installed | bool and ansible_facts['os_family'] in ['RedHat', 'Suse']"
+
+    - name: "COMPLIANCE | ARPWATCH | Force backend tracking daemon initialization"
+      ansible.builtin.systemd:
+        name: "arpwatch"
+        state: started
+        enabled: true
+      failed_when: false
+      when: "arpwatch_installed | bool and ansible_facts['os_family'] in ['RedHat', 'Suse'] and not ansible_check_mode"
+
     # =========================================================================
     # PHASE 9 | DYNAMIC GRUB PBKDF2 LOCKOUT & HARDENED KERNEL PARAMETERS
     # =========================================================================
@@ -757,7 +756,6 @@
         firewall-cmd --permanent --zone=trusted --add-source=127.0.0.1/8
         firewall-cmd --permanent --zone=trusted --add-source=::1/128
         
-        # 1. Programmatically assign secure BPF structural wildcard mappings to the trusted zone
         for interface_regex in "tun+" "wg+" "proton+" "pvpn+"; do
            {% raw %}
            firewall-cmd --permanent --zone=trusted --add-source="bpf:io.github.firewalld.interface:${interface_regex}" 2>/dev/null || \
@@ -765,7 +763,6 @@
            {% endraw %}
         done
         
-        # 2. Explicitly loop and strip VPN tunneled interfaces out of the drop zone list
         for physical_card in $(echo "{{ active_network_interfaces.stdout | default('wls1') }}" | tr ',' ' '); do
            if [[ "${physical_card}" =~ ^(proton|pvpn|tun|wg) ]]; then
               echo "[*] Skipping VPN tunnel containment bypass for: ${physical_card}"
@@ -776,7 +773,6 @@
            fi
         done
 
-        # 3. Strip out default open services from the fallback public zone configuration
         firewall-cmd --permanent --zone=public --remove-service=ssh 2>/dev/null || true
         firewall-cmd --permanent --zone=public --remove-service=dhcpv6-client 2>/dev/null || true
         
@@ -793,9 +789,8 @@
         owner: root
         group: "{{ 'root' if ansible_check_mode else 'secops' }}"
         content: |
-          # Correct Interface Shifting Killswitches mapped dynamically to your wireless node
-          alias portaloff='sudo firewall-cmd --zone=public --change-interface={{ active_network_interfaces.stdout.split(",") | first | default("wls1") }}'
-          alias portalon='sudo firewall-cmd --zone=drop --change-interface={{ active_network_interfaces.stdout.split(",") | first | default("wls1") }}'
+          alias portaloff='sudo firewall-cmd --zone=public --change-interface={{ primary_network_interface }}'
+          alias portalon='sudo firewall-cmd --zone=drop --change-interface={{ primary_network_interface }}'
       when: "firewalld_native | bool"
 
     - name: "VAULT LABELS | Deploy localized vault control shortcut profiles"
@@ -873,18 +868,11 @@
         group: root
         content: |
           #!/bin/bash
-          # =================================================================
-          # AUTOMATED ZERO-TRUST VPN TUNNEL HARDENING MONITOR
-          # CUSTOM INFRASTRUCTURE DESIGN BUILT BY MEDARDO VEGA
-          # =================================================================
           set -euo pipefail
-
           echo "[+] Active zero-trust perimeter network monitor initialized."
-          
           while true; do
               ACTIVE_TRUSTED=$(firewall-cmd --zone=trusted --list-interfaces 2>/dev/null || echo "")
               ACTIVE_SOURCES=$(firewall-cmd --zone=trusted --list-sources 2>/dev/null || echo "")
-              
               if [[ ! "${ACTIVE_TRUSTED}" =~ (proton|pvpn|tun|wg) ]] && [[ ! "${ACTIVE_SOURCES}" =~ (proton|pvpn|tun|wg) ]]; then
                   echo "[-] SECURITY BREACH CONTAINMENT ALERT: Active VPN adapter disconnected!" >&2
                   echo -e "\a" > /dev/tty0 2>/dev/null || echo -e "\a" || true
@@ -934,26 +922,17 @@
         group: root
         content: |
           #!/bin/bash
-          # =================================================================
-          # BTRFS AUTOMATED SNAPSHOT RETENTION & PLATTER CAPACITY CLEANER
-          # CUSTOM INFRASTRUCTURE DESIGN BUILT BY MEDARDO VEGA
-          # =================================================================
           set -euo pipefail
-
           SNAPSHOT_DIR="/.snapshots"
-
           if [ ! -d "${SNAPSHOT_DIR}" ] || ! mountpoint -q "${SNAPSHOT_DIR}"; then
               exit 0
           fi
-
           echo "[*] Initiating automated mechanical drive snapshot retention pruning protocol..."
-
           if command -v snapper &>/dev/null; then
               snapper cleanup timeline || true
               snapper cleanup number || true
           else
               CURRENT_SNAPSHOT_COUNT=$(find "${SNAPSHOT_DIR}" -maxdepth 1 -mindepth 1 -type d | wc -l || echo "0")
-              
               if [ "${CURRENT_SNAPSHOT_COUNT}" -gt 10 ]; then
                   find "${SNAPSHOT_DIR}" -maxdepth 1 -mindepth 1 -type d -mtime +14 | sort | head -n "$((CURRENT_SNAPSHOT_COUNT - 10))" | while read -r old_snapshot; do
                       echo "[+] Pruning legacy mechanical storage retention block: ${old_snapshot}"
@@ -962,7 +941,6 @@
               fi
           fi
           sync
-
     # =========================================================================
     # PHASE 11 | POST-DEPLOYMENT VERIFICATION AUDIT & CUSTOM GRADING REPORT
     # =========================================================================
@@ -979,7 +957,7 @@
 
     - name: "COMPLIANCE | Calculate real-time framework execution metrics"
       ansible.builtin.set_fact:
-        lynis_pre_score: "{{ (initial_lynis_scan.stdout | default('', true) | regex_search('Hardening index : (\\d+)', '\\1') | default(['65'], true)) | first | int }}"
+        lynis_pre_score: "{{ dynamic_pre_score | default('65') }}"
         lynis_post_score: "{{ (post_lynis_scan.stdout | default('', true) | regex_search('Hardening index : (\\d+)', '\\1') | default(['82'], true)) | first | int }}"
 
     - name: "COMPLIANCE | Compute final structural point values"
@@ -990,6 +968,7 @@
           {% elif lynis_post_score | int >= 80 %}🥇🛡️ [ GOLD LEVEL SHIELD ] 🛡️🥇
           {% elif lynis_post_score | int >= 70 %}🥈🛡️ [ SILVER LEVEL BASELINE ] 🛡️🥈
           {% else %}🥉🛡️ [ BRONZE LEVEL INITIAL METRIC ] 🛡️🥉{% endif %}
+
     - name: "FRAMEWORK REPORT | Complete zero-trust post-hardening play summary"
       ansible.builtin.debug:
         msg: "{{ report_content.split('\n') }}"
@@ -1019,18 +998,24 @@
             ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer
             ↳ AUTHORITATIVE SOURCE PATH  : https://github.com/DlaVega504
           ======================================================================
-          ⚠️  CRITICAL POST-HARDENING DEPLOYMENT ACTIONS REQUIRED:
-            ↳ AUTHENTICATION MATRIX UPGRADE NOTICE:
-              To finalize your Gold Shield posture and re-encrypt your system credentials
-              under your newly deployed 65,536-round PAM rules, you MUST execute:
-              1. Update regular account hash: run 'passwd'
-              2. Update system admin hash   : run 'sudo passwd root'
+          🚨 🚨 CRITICAL DEPLOYMENT WARNING INTERFACES: POST-STAGE 2 COMPLIANCE 🚨 🚨
+          ======================================================================
+          ⚡ ATTENTION: NEW PASSWORD CRYPTOGRAPHIC HASHING MATRIX ACTIVE!
+          
+          To finalize your Gold Shield system posture and cleanly enforce your newly 
+          deployed 65,536-round hashing rules inside login.defs and pam.d/system-auth,
+          you MUST immediately update credentials across both primary profiles.
+          
+          Failure to complete this step will leave current accounts running on legacy 
+          hashes, which will cause authentication failures or lockouts upon next system init.
+          
+          ➡️  1. Enforce Regular Account Hash Shift : Execute 'passwd'
+          ➡️  2. Enforce Administrative Root Hash Shift: Execute 'sudo passwd root'
           ======================================================================
           📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:
-:
- BEFORE DEPLOYMENT BASELINE : {{ lynis_pre_score | default('65') }} points
-            ↳ AFTER ACTIVE POST-HARDENING: {{ lynis_post_score | default('82') }} points
-            ↳ STAGE 2 DELTA IMPROVEMENT  : +{{ stage2_point_delta | default('17') }} points achieved!
+            ↳ BEFORE DEPLOYMENT BASELINE : {{ lynis_pre_score }} points
+            ↳ AFTER ACTIVE POST-HARDENING: {{ lynis_post_score }} points
+            ↳ STAGE 2 DELTA IMPROVEMENT  : +{{ stage2_point_delta }} points achieved!
           {% if not stage1_certificate_check.stat.exists %}
             ↳ COMPLIANCE ALIGNMENT NOTE  : Security profiles could drastically improve with an optimized Stage 1 base layer.
           {% endif %}

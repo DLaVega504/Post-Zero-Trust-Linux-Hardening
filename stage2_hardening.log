@@ -58,6 +58,14 @@ ok: [localhost]
 TASK [COMPLIANCE | Execute initial pre-hardening baseline audit scan] **********
 ok: [localhost]
 
+TASK [COMPLIANCE | Parse real-time live pre-hardening index values] ************
+ok: [localhost]
+
+TASK [COMPLIANCE | NOTIFY | Render dynamic index baseline confirmation] ********
+ok: [localhost] => {
+    "msg": "📊 RUNNING PRE-STAGE 2 LYNIS AUDIT: Actual Initial Grade Calculated at [ 65 points ]"
+}
+
 TASK [BTRFS | TOPO | Initialize missing mount point directory paths on host tree] ***
 ok: [localhost] => (item={'mountpoint': '/swap'})
 ok: [localhost] => (item={'mountpoint': '/var/log'})
@@ -87,8 +95,10 @@ changed: [localhost]
 TASK [SWAP CONFIG | ALLOCATION | Traditional allocation block if target platform is non-btrfs filesystem] ***
 skipping: [localhost]
 
-TASK [SWAP CONFIG | LEDGER | Verify swap mounts are persistent inside fstab array] ***
-changed: [localhost]
+TASK [SWAP CONFIG | NOTIFY | Render automated swap infrastructure hardening status] ***
+ok: [localhost] => {
+    "msg": "⚙️  CREATING SWAP FILE SIZE: Precise allocated size locked into fstab ledger is [ 8 GB ]"
+}
 
 TASK [ZRAM PROVISION | Deploy chosen compression algorithm setup matching scanned hardware profile] ***
 ok: [localhost]
@@ -116,7 +126,7 @@ TASK [VAULT ENGINE | Synthesize dynamic proportional mathematical storage profil
 ok: [localhost]
 
 TASK [VAULT ENGINE | Construct automated multi-layer quota-enforcing wrapper utilities] ***
-ok: [localhost]
+changed: [localhost]
 
 TASK [TELEMETRY | INTEL | Evaluate host drive architecture for intrusion suite allocation] ***
 ok: [localhost] => {
@@ -133,23 +143,37 @@ ok: [localhost] => {
 TASK [INTRUSION DETECTION | AIDE | Initialize baseline database configuration mapping] ***
 skipping: [localhost]
 
-TASK [INTRUSION DETECTION | AIDE | Render real-time database initialization log arrays] ***
-skipping: [localhost]
-
-TASK [INTRUSION DETECTION | TRIPWIRE | Map administrative global and local keys into RAM space] ***
-skipping: [localhost]
-
-TASK [INTRUSION DETECTION | TRIPWIRE | Inject credentials via non-interactive automated loop] ***
-skipping: [localhost]
-
-TASK [INTRUSION DETECTION | TRIPWIRE | Render real-time signature compilation logs] ***
-skipping: [localhost]
-
-TASK [INTRUSION DETECTION | SANITIZATION | Volatile RAM sweep purging plaintext key variables] ***
+TASK [INTRUSION DETECTION | GUIDE | Print real-time administrative instructions layout] ***
 skipping: [localhost]
 
 TASK [HARDENING | Enforce robust distribution-agnostic protection metrics via sysctl] ***
 ok: [localhost]
+
+TASK [COMPLIANCE | FAIL2BAN | Scan system state and enforce package installation] ***
+ok: [localhost]
+
+TASK [COMPLIANCE | FAIL2BAN | Inject aggressive intrusion jail configurations] ***
+changed: [localhost]
+
+TASK [COMPLIANCE | FAIL2BAN | Force automatic boot activation and service startup lock] ***
+changed: [localhost]
+
+TASK [COMPLIANCE | NOTIFY | Render hardware-aware active services message] *****
+ok: [localhost] => {
+    "msg": "⚙️  ENABLING NEW SERVICES: [ fail2ban, arpwatch] live into system boot structures..."
+}
+
+TASK [COMPLIANCE | HOSTS | Force absolute hostname loopback map alignment] *****
+changed: [localhost]
+
+TASK [COMPLIANCE | ARPWATCH | Target hardware initialization interfaces cleanly] ***
+changed: [localhost]
+
+TASK [COMPLIANCE | ARPWATCH | Handle enterprise sysconfig bindings] ************
+skipping: [localhost]
+
+TASK [COMPLIANCE | ARPWATCH | Force backend tracking daemon initialization] ****
+skipping: [localhost]
 
 TASK [BOOT AUDIT | Scan if GRUB bootloader password protection is already active] ***
 ok: [localhost]
@@ -197,7 +221,7 @@ TASK [FIREWALLD | ENFORCE INTERFACE CONTAINMENT | Set baseline architecture zone
 changed: [localhost]
 
 TASK [FIREWALL LABELS | Deploy global interface switching script tools] ********
-ok: [localhost]
+changed: [localhost]
 
 TASK [VAULT LABELS | Deploy localized vault control shortcut profiles] *********
 ok: [localhost]
@@ -221,7 +245,7 @@ TASK [PHASE 10 | SNAPPER ENFORCEMENT | Secure background snapshot monitoring dae
 ok: [localhost]
 
 TASK [SECURITY | ENGINE | Deploy real-time background VPN leak monitoring daemon] ***
-ok: [localhost]
+changed: [localhost]
 
 TASK [SECURITY | DAEMON | Initialize background network perimeter service wrapper] ***
 ok: [localhost]
@@ -230,7 +254,7 @@ TASK [SECURITY | ENFORCEMENT | Launch background leak monitor utility service] *
 ok: [localhost]
 
 TASK [STORAGE | MAINTENANCE | Deploy daily automated snapshot pruning profile utility] ***
-ok: [localhost]
+changed: [localhost]
 
 TASK [STORAGE | Force override FDE detection for Btrfs on LUKS2] ***************
 ok: [localhost]
@@ -267,6 +291,20 @@ ok: [localhost] => {
         "  ↳ PROFESSIONAL TITLE         : Self-Taught Linux Systems & SecOps Infrastructure Engineer",
         "  ↳ AUTHORITATIVE SOURCE PATH  : https://github.com/DlaVega504",
         "======================================================================",
+        "🚨 🚨 CRITICAL DEPLOYMENT WARNING INTERFACES: POST-STAGE 2 COMPLIANCE 🚨 🚨",
+        "======================================================================",
+        "⚡ ATTENTION: NEW PASSWORD CRYPTOGRAPHIC HASHING MATRIX ACTIVE!",
+        "",
+        "To finalize your Gold Shield system posture and cleanly enforce your newly ",
+        "deployed 65,536-round hashing rules inside login.defs and pam.d/system-auth,",
+        "you MUST immediately update credentials across both primary profiles.",
+        "",
+        "Failure to complete this step will leave current accounts running on legacy ",
+        "hashes, which will cause authentication failures or lockouts upon next system init.",
+        "",
+        "➡️  1. Enforce Regular Account Hash Shift : Execute 'passwd'",
+        "➡️  2. Enforce Administrative Root Hash Shift: Execute 'sudo passwd root'",
+        "======================================================================",
         "📊 LYNIS VERIFICATION SECURITY COMPLIANCE GAP RECORD:",
         "  ↳ BEFORE DEPLOYMENT BASELINE : 65 points",
         "  ↳ AFTER ACTIVE POST-HARDENING: 82 points",
@@ -278,6 +316,9 @@ ok: [localhost] => {
     ]
 }
 
+RUNNING HANDLER [Reload Active Systemd Core] ***********************************
+ok: [localhost]
+
 PLAY RECAP *********************************************************************
-localhost                  : ok=59   changed=9    unreachable=0    failed=0    skipped=15   rescued=0    ignored=0   
+localhost                  : ok=68   changed=16   unreachable=0    failed=0    skipped=13   rescued=0    ignored=0   
 
