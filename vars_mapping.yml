@@ -1,8 +1,31 @@
+# =============================================================================
+# 🔒 STAGE 2 ZERO-TRUST ARCHITECTURE: MULTI-DISTRO TARGET DISTRIBUTION MATRIX
+# AUTHOR: MEDARDO VEGA | LOGIC & RECONNAISSANCE VARIABLES LEDGER
+# =============================================================================
+
+# 🗄️ ARCH LINUX PLATFORM PROFILE CONFIGURATION Presets
 arch_vars:
   admin_group: "wheel"
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snap-pac", "git", "make", "aide", "rsync"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
+  core_packages:
+    - "libpwquality"
+    - "firewalld"
+    - "fail2ban"
+    - "usbguard"
+    - "clamav"
+    - "sysstat"
+    - "lynis"
+    - "snapper"
+    - "snap-pac"
+    - "git"
+    - "make"
+    - "aide"
+    - "rsync"
+    - "audit"  # 🧠 CRITICAL RESOLUTION: Enforces user-space utils presence for auditd daemon setup
+    - "snort"  # 🧠 HYBRID OPTION B: Installs standard package mapping to Snort 3 Lua engine natively
+  aur_packages:
+    - "tripwire-git"  # 🧠 CRITICAL RESOLUTION: Isolated strictly to Paru AUR compilation track
   subvolumes:
     - { name: "@", dest: "/" }
     - { name: "@home", dest: "/home" }
@@ -13,11 +36,29 @@ arch_vars:
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@flatpak", dest: "/var/lib/flatpak" }
     - { name: "@srv", dest: "/srv" }
+
+# 🗄️ DEBIAN STABLE PLATFORM PROFILE CONFIGURATION Presets
 debian_vars:
   admin_group: "sudo"
-  core_packages: ["libpwquality-tools", "firewalld", "fail2ban", "usbguard", "clamav-daemon", "clamav-freshclam", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
   zram_conf_path: "/etc/default/zram-init"
   login_defs_path: "/etc/login.defs"
+  core_packages:
+    - "libpwquality-tools"
+    - "firewalld"
+    - "fail2ban"
+    - "usbguard"
+    - "clamav-daemon"
+    - "clamav-freshclam"
+    - "sysstat"
+    - "lynis"
+    - "snapper"
+    - "git"
+    - "make"
+    - "rsync"
+    - "aide"
+    - "tripwire"
+    - "auditd" # 🧠 CRITICAL RESOLUTION: Debian maps user-space utilities directly under daemon binary string name
+    - "snort"  # 🧠 HYBRID OPTION B: Dynamic fallback forces native ingestion of stable Snort 2.9 text engine
   subvolumes:
     - { name: "@rootfs", dest: "/" }
     - { name: "@home", dest: "/home" }
@@ -27,11 +68,29 @@ debian_vars:
     - { name: "@cache", dest: "/var/cache/apt/archives" }
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@srv", dest: "/srv" }
+
+# 🗄️ FEDORA WORKSTATION PLATFORM PROFILE CONFIGURATION Presets
 fedora_vars:
   admin_group: "wheel"
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "clamav-update", "sysstat", "lynis", "snapper", "git", "make", "rsync", "aide", "tripwire"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
+  core_packages:
+    - "libpwquality"
+    - "firewalld"
+    - "fail2ban"
+    - "usbguard"
+    - "clamav"
+    - "clamav-update"
+    - "sysstat"
+    - "lynis"
+    - "snapper"
+    - "git"
+    - "make"
+    - "rsync"
+    - "aide"
+    - "tripwire"
+    - "audit"   # 🧠 CRITICAL RESOLUTION: Enforces RPM user-space framework tools package presence
+    - "snort3"  # 🧠 HYBRID OPTION B: Pulls Fedora's independent modern Snort 3 Lua package target string
   subvolumes:
     - { name: "root", dest: "/" }
     - { name: "home", dest: "/home" }
@@ -40,11 +99,31 @@ fedora_vars:
     - { name: "log", dest: "/var/log" }
     - { name: "cache", dest: "/var/cache/dnf" }
     - { name: "containers", dest: "/var/lib/containers" }
+
+# 🗄️ OPENSUSE TUMBLEWEED/LEAP PLATFORM PROFILE CONFIGURATION Presets
 suse_vars:
   admin_group: "wheel"
-  core_packages: ["libpwquality", "firewalld", "fail2ban", "usbguard", "clamav", "sysstat", "lynis", "snapper", "snapper-plugins", "git", "make", "kernel-default", "grub2-snapper-plugin", "aide", "tripwire", "rsync"]
   zram_conf_path: "/etc/systemd/zram-generator.conf"
   login_defs_path: "/etc/login.defs"
+  core_packages:
+    - "libpwquality"
+    - "firewalld"
+    - "fail2ban"
+    - "usbguard"
+    - "clamav"
+    - "sysstat"
+    - "lynis"
+    - "snapper"
+    - "snapper-plugins"
+    - "git"
+    - "make"
+    - "kernel-default"
+    - "grub2-snapper-plugin"
+    - "aide"
+    - "tripwire"
+    - "rsync"
+    - "audit"  # 🧠 CRITICAL RESOLUTION: Provisions zypper user-space audit logging libraries
+    - "snort"  # 🧠 HYBRID OPTION B: Maps to openSUSE community networking base package definition
   subvolumes:
     - { name: "@", dest: "/" }
     - { name: "@snapshots", dest: "/.snapshots" }
