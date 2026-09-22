@@ -1057,6 +1057,15 @@
           }
       when: "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
 
+    - name: "CLAMAV | CONFIGURATION | Establish systemd drop-in override containment path"
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}.service.d"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: "not ansible_check_mode"
+
     - name: "CLAMAV | CONFIGURATION | Inject hardware-proportional resource management parameters"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}.service.d/override.conf"
@@ -1091,7 +1100,8 @@
           {%- endif -%}
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
-      
+
+
     - name: "CLAMAV | ENFORCEMENT | Startup activation gate conditioned on memory bounds"
       ansible.builtin.systemd:
         name: "{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}"
@@ -1373,6 +1383,7 @@
         - "active_network_interfaces.stdout is defined and active_network_interfaces.stdout | length > 0"
         - "hardware_form_factor in ['LAPTOP / PORTABLE WORKSTATION', 'DESKTOP / FIXED SECURE STATION']"
         - "not ansible_check_mode"
+        - "not firewalld_native | bool"
 
     - name: "STAGE 2 & 3 KILLSWITCH | Permanently assign virtual tunnel interfaces to trusted zones"
       ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --add-interface={{ item }}"
