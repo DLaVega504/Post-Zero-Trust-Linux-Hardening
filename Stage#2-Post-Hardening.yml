@@ -883,6 +883,37 @@
           ::1          localhost localhost.localdomain {{ system_hostname_signature | default('SecEngr') }}
       become: true
 
+    - name: "CONFIGURATION | SYSTEM BANNERS | Generate dynamic cross-distribution login disclaimers"
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          ===============================================================================
+          [ 🔒 WARNING: {{ ansible_facts['distribution'] | upper }} SECURE INFRASTRUCTURE NODE ]
+          ===============================================================================
+          
+            🚨 AUTHORIZATION WARNING NOTICE:
+            This computer system is restricted strictly to authorized users only. 
+            Unauthorized access, connection attempts, or modifications are prohibited.
+            
+            🛡️  REAL-TIME SECURITY PROVISIONING:
+            All interactions, network sessions, and host transactions on this node 
+            are subject to continuous live kernel monitoring, session auditing, and 
+            forensic payload logging under host administrative authorities.
+
+            ⚠️  LEGAL LIABILITY DISCLAIMER:
+            Anyone choosing to access this system explicitly consents to continuous 
+            auditing. UNAUTHORIZED USERS WILL BE APPREHENDED and prosecuted to the 
+            fullest extent of the law. Disconnect immediately if you are unauthorized.
+
+          ===============================================================================
+      loop:
+        - "/etc/issue"
+        - "/etc/issue.net"
+      become: true
+
 
     - name: "VAULT ENGINE | Interrogate raw physical block storage boundary footprint sizes"
       ansible.builtin.shell: |
@@ -972,10 +1003,21 @@
         owner: root
         group: "{{ distro_matrix[ansible_facts['os_family']]['admin_group'] if ansible_facts['os_family'] in distro_matrix else 'wheel' }}"
       when: "secure_vault_enabled | bool"
+
 # =============================================================================
 # BLOCK 27: LINK-LAYER NETWORK GUARD INJECTIONS
 # DESCRIPTION: Generates drop-in execution paths for network audit utilities to apply strict systemd sandboxing properties over monitoring units.
 # =============================================================================
+
+    - name: "COMPLIANCE | ARPWATCH | Suppress legacy binary chdir warnings universally"
+      ansible.builtin.file:
+        path: "/usr/arpwatch"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      become: true
+      
     - name: "COMPLIANCE | ARPWATCH | Establish configuration drop-in containment directory universally"
       ansible.builtin.file:
         path: "/etc/systemd/system/{{ 'arpwatch@' ~ primary_network_interface if ansible_facts['os_family'] in ['Archlinux', 'Debian'] else 'arpwatch' }}.service.d"
@@ -983,6 +1025,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: true
 
     - name: "COMPLIANCE | ARPWATCH | Inject sandbox restrictions via universal systemd override matrix"
       ansible.builtin.copy:
@@ -998,7 +1041,7 @@
           [Service]
           ProtectSystem=strict
           ProtectHome=true
-          ReadWritePaths=/var/lib/arpwatch
+          ReadWritePaths=/var/lib/arpwatch /var/lib/arpwatch/arpwatch.dat
           PrivateTmp=true
           ProtectControlGroups=true
           ProtectKernelModules=true
@@ -1007,6 +1050,7 @@
           CapabilityBoundingSet=CAP_NET_RAW
           NoNewPrivileges=true
       notify: "Reload Active Systemd Core"
+      become: true
 
 # =============================================================================
 # BLOCK 28: FIREWALD DYNAMIC PERIMETER CONTROLS
@@ -1073,14 +1117,28 @@
         - "not ansible_check_mode"
 
     - name: "CONFIGURATION | PERIPHERAL | Enforce correct system owner permissions over USBGuard ledgers"
-      ansible.builtin.file:
-        path: "/etc/usbguard/rules.conf"
-        owner: usbguard
-        group: usbguard
-        mode: '0600'
-      when:
-        - "ansible_facts['os_family'] == 'Archlinux'"
-        - "not ansible_check_mode"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        TARGET_FILE="/etc/usbguard/rules.conf"
+        
+        # Verify the ledger file physically exists before enforcing parameters
+        if [ -f "${TARGET_FILE}" ]; then
+            if getent passwd usbguard >/dev/null 2>&1; then
+                echo "[+] System-specific user 'usbguard' detected. Applying localized daemon permissions."
+                chown usbguard:usbguard "${TARGET_FILE}"
+            else
+                echo "[!] No standalone service user found. Falling back to root administrative constraints."
+                chown root:root "${TARGET_FILE}"
+            fi
+            chmod 0600 "${TARGET_FILE}"
+        else
+            echo "[-] Error: USBGuard ledger rules file not found at ${TARGET_FILE}"
+            exit 1
+        fi
+      args:
+        executable: /bin/bash
+      when: "not ansible_check_mode"
+      become: true
 
 
     - name: "CONFIGURATION | PERIPHERAL | Enforce hardened implicit policy target definitions"
@@ -1091,6 +1149,17 @@
         state: present
       when: "not ansible_check_mode"
 
+    - name: "CONFIGURATION | PERIPHERAL | Deactivate invalid AllowStoredDevices directive on Arch Linux"
+      ansible.builtin.lineinfile:
+        path: "/etc/usbguard/usbguard-daemon.conf"
+        regexp: "^(AllowStoredDevices=)"
+        line: "# AllowStoredDevices=top"
+        state: absent
+      when:
+        - "ansible_facts['os_family'] == 'Archlinux'"
+        - "not ansible_check_mode"
+      become: true
+      
     - name: "PROVISION | UNIVERSAL | Install Tripwire forensic engine from native repositories"
       ansible.builtin.package:
         name: "tripwire"
@@ -1137,6 +1206,18 @@
         state: present
       when: "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
 
+    - name: "CONFIGURATION | SNORT | Deactivate non-existent dynamic rules directory paths"
+      ansible.builtin.lineinfile:
+        path: "/etc/snort/snort.conf"
+        regexp: "^(dynamicdetection\\s+directory\\s+/usr/lib/snort_dynamicrules)"
+        line: "# dynamicdetection directory /usr/lib/snort_dynamicrules"
+        state: present
+      when:
+        - "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'Suse'"
+        - "not ansible_check_mode"
+      become: true
+
+
     - name: "CONFIGURATION | SNORT 2.9 | Deploy classic plain-text engine rules matrix"
       ansible.builtin.lineinfile:
         path: "/etc/snort/snort.conf"
@@ -1153,7 +1234,7 @@
         mode: '0644'
         content: |
           interfaces = {
-              name = "{{ primary_network_interface | default('wls1') }}"
+              name = "{{ primary_network_interface }}"
           }
           HOME_NET = "{{ dynamic_home_net | default('192.168.1.0/24') }}"
           EXTERNAL_NET = "!$HOME_NET"
@@ -1162,7 +1243,10 @@
               mode = "tap",
               rules = [[ include local.rules ]]
           }
-      when: "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
+      when: 
+        - "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
+        - "not ansible_check_mode"
+      become: true
 
     - name: "CLAMAV | CONFIGURATION | Establish systemd drop-in override containment path"
       ansible.builtin.file:
@@ -1218,15 +1302,6 @@
       notify: "Reload Active Systemd Core"
 
 
-    - name: "CLAMAV | ENFORCEMENT | Startup activation gate conditioned on memory bounds"
-      ansible.builtin.systemd:
-        name: "{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}"
-        state: started
-        enabled: true
-      failed_when: false
-      when:
-        - "not ansible_check_mode"
-        - "ansible_facts['memtotal_mb'] | int >= 3500"
 
     - name: "AIDE | SCHEDULER | Deploy daily oneshot service check files"
       ansible.builtin.copy:
@@ -1319,16 +1394,79 @@
         owner: root
         group: root
         content: |
-          ======================================================================
-          ⚠️ [ PERFORMANCE PROTECTION GUARD: STORAGE CONTROL WARNING SHIELD ]
-          ======================================================================
-            ↳ HARDWARE LAYER INGESTION   : ROTATIONAL PLATTER DRIVE DETECTED (HDD)
-            ↳ COMPLIANCE LIFECYCLE TRACK : AUTOMATED BACKGROUND OVERRIDE ACTIVATED
-          ======================================================================
+          =========================================================================================
+           🛡️  ZERO-TRUST POST-REBOOT MANUAL INTEGRITY AUDIT PROVISIONING PROTOCOL
+          =========================================================================================
+           DETECTED OS LAYER : {{ ansible_facts['os_family'] | upper }}
+           TARGET ENGINE 1   : ADVANCED INTRUSION DETECTION ENVIRONMENT (AIDE)
+           STATUS            : PRE-CACHED | REQUIRES MANUAL BASELINE COMPILATION
+          =========================================================================================
+
+           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           !!!                           CRITICAL HARDWARE INFRASTRUCTURE NOTICE               !!!
+           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            ⚡ POWER SOURCE ENFORCEMENT:
+               Ensure your laptop is securely connected to an external AC power wall rail 
+               before starting these operations. Do NOT execute these commands on battery power.
+
+            🎛️  RESOURCE CONSUMPTION WARNING:
+               The initial database baseline construction forces deep cryptographic filesystem 
+               signature scans. This process will consume a massive amount of CPU capacity and 
+               generate heavy, continuous platter drive hashing I/O loops. 
+               
+               Aborting mid-execution due to power depletion or process interruption will 
+               corrupt your forensic state tables and break downstream verification timers.
+           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+           Since this node features a mechanical disk configuration, the automated 
+           database generation was bypassed to conserve execution I/O channels.
+           
+           Execute the following commands sequentially to build your integrity baseline:
+
+          {% if ansible_facts['os_family'] == 'Debian' %}
+             1. Initialize Database  : sudo aideinit
+             2. Move/Verify Ledger   : [ -f /var/lib/aide/aide.db.new ] && sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db || true
+          {% elif ansible_facts['os_family'] == 'RedHat' %}
+             1. Initialize Database  : sudo aide --init
+             2. Move/Verify Ledger   : sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+          {% else %}
+             1. Initialize Database  : sudo aide --init
+             2. Move/Verify Ledger   : sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+          {% endif %}
+
+          =========================================================================================
+           TARGET ENGINE 2 : TRIPWIRE CORE FORENSICS LOCK
+           STATUS          : BINARY INSTALLED | REQUIRES GLOBAL & LOCAL KEY SIGNING
+          =========================================================================================
+           Because your platter drive requires manual cryptographic signing, follow these exact 
+           steps in the /etc/tripwire directory to initialize the forensics database:
+
+           STEP 1: Move into the main configuration directory
+             ↳ cd /etc/tripwire
+
+           STEP 2: Generate your Cryptographic Global (Site) and Local Keys
+             ↳ sudo twadmin --generate-keys --site-keyfile /etc/tripwire/site.key
+             ↳ sudo twadmin --generate-keys --local-keyfile /etc/tripwire/{{ system_hostname_signature | default('SecEngr') }}-local.key
+             (Note: The system will securely prompt you to assign a separate passphrase for each key)
+
+           STEP 3: Sign and Encrypt your Cleartext Configuration Template
+             ↳ sudo twadmin --create-cfgfile --cfgfile /etc/tripwire/tw.cfg --site-keyfile /etc/tripwire/site.key /etc/tripwire/twcfg.txt
+
+           STEP 4: Sign and Encrypt your Cleartext Security Security Policy Template
+             ↳ sudo twadmin --create-polfile --cfgfile /etc/tripwire/tw.cfg --site-keyfile /etc/tripwire/site.key /etc/tripwire/twpol.txt
+
+           STEP 5: Secure File Permissions over cleartext sources
+             ↳ sudo chmod 600 /etc/tripwire/site.key /etc/tripwire/*-local.key /etc/tripwire/tw.cfg /etc/tripwire/tw.pol
+             ↳ sudo rm -f /etc/tripwire/twcfg.txt /etc/tripwire/twpol.txt
+
+           STEP 6: Initialize your pristine Forensic Integrity Database Baseline
+             ↳ sudo tripwire --init
+          =========================================================================================
       when:
         - "is_mechanical_drive | bool"
         - "not failsafe_runtime_only_mode | bool"
         - "not ansible_check_mode"
+
 
     - name: "USERLAND | HOOK | Deploy automated self-destructing post-reboot notification script"
       ansible.builtin.copy:
@@ -1384,7 +1522,7 @@
 
     - name: "SECURITY | DAEMON | Initialize background network perimeter service wrapper"
       ansible.builtin.copy:
-        dest: "/etc/systemd/system/vpn-monitor.service"
+        dest: "/etc/systemd/system/vpn-leak-protection.service"
         mode: '0644'
         owner: root
         group: root
@@ -1401,14 +1539,16 @@
 
           [Install]
           WantedBy=multi-user.target
+      become: true
 
     - name: "SECURITY | ENFORCEMENT | Launch background leak monitor utility service"
       ansible.builtin.systemd:
-        name: "vpn-monitor.service"
+        name: "vpn-leak-protection.service"
         state: started
         enabled: true
       failed_when: false
       when: "not ansible_check_mode"
+      become: true
 
     - name: "PAM | HARDENING | Inject strict password stretching algorithm limits into system auth"
       ansible.builtin.lineinfile:
@@ -1420,6 +1560,9 @@
         - { regexp: "^#?ENCRYPT_METHOD", line: "ENCRYPT_METHOD SHA512" }
         - { regexp: "^#?SHA_CRYPT_MIN_ROUNDS", line: "SHA_CRYPT_MIN_ROUNDS 65536" }
         - { regexp: "^#?SHA_CRYPT_MAX_ROUNDS", line: "SHA_CRYPT_MAX_ROUNDS 65536" }
+        - { regexp: "^#?UMASK\\s+", line: "UMASK           027" }
+        - { regexp: "^#?FAILLOG_ENAB\\s+", line: "FAILLOG_ENAB yes" }
+        - { regexp: "^#?LOG_UNKFAIL_ENAB\\s+", line: "LOG_UNKFAIL_ENAB yes" }
       when: "not ansible_check_mode"
 
     - name: "PAM | HARDENING | Enforce universal baseline account password aging defaults"
@@ -1442,14 +1585,60 @@
       when: "not ansible_check_mode"
 
 
-    - name: "PAM | HARDENING | Force rounds parameter match inside system authentication configurations"
-      ansible.builtin.lineinfile:
-        path: "/etc/pam.d/system-auth"
-        regexp: "^password\\s+required\\s+pam_unix.so"
-        line: "password required pam_unix.so sha512 shadow rounds=65536 try_first_pass use_authtok"
-        state: present
-      failed_when: false
+    - name: "PAM | HARDENING | Standardize cross-distribution faillock lockout policy parameters"
+      ansible.builtin.copy:
+        dest: /etc/security/faillock.conf
+        content: |
+          # Automated Baseline Verification - Hardening Blueprint
+          deny = 3
+          unlock_time = 900
+          fail_interval = 900
+          audit
+        mode: '0644'
+        owner: root
+        group: root
       when: "not ansible_check_mode"
+
+    - name: "PAM | HARDENING | Execute authselect feature profiles for RedHat and Fedora"
+      ansible.builtin.command: authselect enable-feature with-faillock
+      register: auth_rh_res
+      changed_when: "'feature is already enabled' not in auth_rh_res.stderr"
+      failed_when: false
+      when: 
+        - "ansible_facts['os_family'] == 'RedHat'"
+        - "not ansible_check_mode"
+
+    - name: "PAM | HARDENING | Provision Debian specific profile automation blocks"
+      ansible.builtin.copy:
+        dest: /usr/share/pam-configs/faillock_hardening
+        content: |
+          Name: Enforce faillock via Automation
+          Default: yes
+          Priority: 0
+          Auth-Type: Primary
+          Auth:
+          	[default=die] pam_faillock.so authfail
+          	sufficient pam_faillock.so authsucc
+        mode: '0644'
+      when: 
+        - "ansible_facts['os_family'] == 'Debian'"
+        - "not ansible_check_mode"
+
+    - name: "PAM | HARDENING | Trigger native pam-auth-update mechanisms on Debian platforms"
+      ansible.builtin.command: pam-auth-update --package --force
+      changed_when: true
+      when: 
+        - "ansible_facts['os_family'] == 'Debian'"
+        - "not ansible_check_mode"
+
+    - name: "PAM | HARDENING | Implement native pam-config parameters dynamically on openSUSE"
+      ansible.builtin.command: pam-config --add --faillock
+      register: pam_suse_res
+      changed_when: true
+      failed_when: false
+      when: 
+        - "ansible_facts['os_family'] == 'Suse'"
+        - "not ansible_check_mode"
 
     - name: "AUDITD | ENFORCE PARENT PATHS | Ensure rule directories exist for Debian architectures"
       ansible.builtin.file:
@@ -1597,23 +1786,77 @@
           - "  are initialized to lock your architectural parameters permanently."
           - "======================================================================================="
       
-
-    - name: "SECURITY SERVICES | Activate and enable baseline security infrastructure daemons"
+    - name: "SECURITY SERVICES | BOOT ENFORCEMENT | Securely enable security infrastructure service boot maps"
       ansible.builtin.systemd:
         name: >-
           {%- if item == 'arpwatch' and ansible_facts['os_family'] in ['Archlinux', 'Debian'] -%}
-            arpwatch@{{ primary_network_interface | default('ens5') }}.service
-          {%- elif item == 'snort' and ansible_facts['os_family'] in ['Archlinux', 'RedHat'] -%}
-            snort@{{ primary_network_interface | default('ens5') }}.service
+            arpwatch@{{ 'wls1' if 'wls1' in active_network_interfaces.stdout else (primary_network_interface | default('wls1')) }}.service
+          {%- elif item == 'snort' and ansible_facts['os_family'] in ['Archlinux', 'Debian', 'Suse'] -%}
+            snort@{{ 'wls1' if 'wls1' in active_network_interfaces.stdout else (primary_network_interface | default('wls1')) }}.service
+          {%- elif item == 'snort' and ansible_facts['os_family'] == 'RedHat' -%}
+            snort3.service
           {%- else -%}
             {{ item }}
           {%- endif -%}
-        state: "started"
         enabled: true
-      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-monitor.service", "auditd", "arpwatch", "snort", "clamav-freshclam"]
+      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-leak-protection.service", "auditd", "arpwatch", "snort", "clamav-freshclam", "clamav-daemon.socket", "clamd.socket", "clamav-daemon", "clamd"]
       failed_when: false
       when: "not ansible_check_mode"
+      become: true
 
+
+    - name: "SECURITY SERVICES | RUNTIME INITIALIZATION | Dynamically trigger live background defense units"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        SERVICE_NAME="{{ item }}"
+        OS_FAMILY="{{ ansible_facts['os_family'] }}"
+        
+        # Enforce your wireless laptop interface track explicitly across all configurations
+        INT_FACE="{{ 'wls1' if 'wls1' in active_network_interfaces.stdout else (primary_network_interface | default('wls1')) }}"
+
+        # Resolve explicit systemd service names based on scanned hardware distribution metrics
+        if [ "${SERVICE_NAME}" = "arpwatch" ] && { [ "${OS_FAMILY}" = "Archlinux" ] || [ "${OS_FAMILY}" = "Debian" ]; }; then
+            RESOLVED_SERVICE="arpwatch@${INT_FACE}.service"
+        elif [ "${SERVICE_NAME}" = "clamav-freshclam" ]; then
+            if [ "${OS_FAMILY}" = "Debian" ]; then
+                RESOLVED_SERVICE="clamav-freshclam"
+            else
+                RESOLVED_SERVICE="clamav-freshclam.service"
+            fi
+        elif [ "${SERVICE_NAME}" = "snort" ]; then
+            if [ "${OS_FAMILY}" = "RedHat" ]; then
+                RESOLVED_SERVICE="snort3.service"
+            elif [ "${OS_FAMILY}" = "Archlinux" ] || [ "${OS_FAMILY}" = "Debian" ] || [ "${OS_FAMILY}" = "Suse" ]; then
+                RESOLVED_SERVICE="snort@${INT_FACE}.service"
+            else
+                RESOLVED_SERVICE="snort.service"
+            fi
+        else
+            RESOLVED_SERVICE="${SERVICE_NAME}"
+        fi
+
+        # Execute specialized initialization loop gates based on security service traits
+        if [ "${SERVICE_NAME}" = "auditd" ]; then
+            echo "[*] Initializing secure kernel audit subsystem via legacy binary paths."
+            service auditd start || systemctl start auditd || true
+        elif [ "${SERVICE_NAME}" = "clamd" ] || [ "${SERVICE_NAME}" = "clamav-daemon" ] || [ "${SERVICE_NAME}" = "clamav-freshclam" ]; then
+            echo "[!] Keeping ClamAV module stopped per low-resource performance profile. Ready for manual activation."
+            systemctl stop "${RESOLVED_SERVICE}" 2>/dev/null || true
+        elif [ "${SERVICE_NAME}" = "clamav-daemon.socket" ] || [ "${SERVICE_NAME}" = "clamd.socket" ]; then
+            echo "[+] Activating background listener socket interface."
+            systemctl start "${RESOLVED_SERVICE}" || true
+        else
+            echo "[+] Injecting live runtime trigger over: ${RESOLVED_SERVICE}"
+            systemctl stop "${RESOLVED_SERVICE}" 2>/dev/null || true
+            systemctl start "${RESOLVED_SERVICE}" || true
+        fi
+      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-leak-protection.service", "auditd", "arpwatch", "snort", "clamav-freshclam", "clamav-daemon.socket", "clamd.socket", "clamav-daemon", "clamd"]
+      args:
+        executable: /bin/bash
+      changed_when: false
+      failed_when: false
+      when: "not ansible_check_mode"
+      become: true
 
     - name: "COMPLIANCE | LYNIS | Enforce custom security profiling configuration metrics universally"
       ansible.builtin.copy:
@@ -1635,6 +1878,22 @@
       failed_when: false
       changed_when: false
       when: "not ansible_check_mode"
+
+    - name: "DIAGNOSTICS | USBGUARD | Capture service log streams on initialization failure"
+      ansible.builtin.command: "journalctl -u usbguard.service -n 20 --no-pager"
+      register: usbguard_failure_diagnostic_logs
+      changed_when: false
+      failed_when: false
+      when: "not ansible_check_mode"
+      become: true
+
+    - name: "DIAGNOSTICS | USBGUARD | Output exact configuration error text to terminal"
+      ansible.builtin.debug:
+        var: usbguard_failure_diagnostic_logs.stdout_lines
+      when:
+        - "usbguard_failure_diagnostic_logs.stdout is defined"
+        - "not ansible_check_mode"
+      
 
 # =============================================================================
 # BLOCK 32: COMPLIANCE METRICS CALCULATIONS, PLAY SUMMARY REPORT, AND HANDLERS
