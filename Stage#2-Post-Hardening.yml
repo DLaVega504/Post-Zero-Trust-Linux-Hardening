@@ -1,8 +1,6 @@
 # =============================================================================
-# PHASE 1: ENVIRONMENT HYDRATION & REPOSITORY BLUEPRINTS
-# DESCRIPTION: Establishes global configuration parameters, distribution package
-# matrices, and target environment structures. This data setup governs the 
-# hardware-aware automation forks executed throughout later hardening tasks.
+# BLOCK 1: INITIAL PLAY METADATA & VARIABLES (PART 1)
+# DESCRIPTION: Establishes playbook destination, disables auto-facts, and locks infrastructure variables.
 # =============================================================================
 ---
 - name: "Universal Stand-Alone Zero-Trust Linux Hardening Framework (Stage 2 Core)"
@@ -29,6 +27,10 @@
     clamav_installed: true
     firewalld_native: true
 
+# =============================================================================
+# BLOCK 2: HARDENING MATRICES & GRADE TEMPLATES (VARIABLES PART 2)
+# DESCRIPTION: Defines drive performance blueprints, package strings, and the Lynis compliance grading structure.
+# =============================================================================
     hdd_matrix_blueprint:
       "150": { bg_ratio: 3,  ratio: 10, scale: 125, pressure: 50,  bytes_mode: true,  bg_bytes: 67108864,  dirty_bytes: 268435456 }
       "100": { bg_ratio: 5,  ratio: 15, scale: 100, pressure: 60,  bytes_mode: false, bg_bytes: 0,         dirty_bytes: 0         }
@@ -39,8 +41,13 @@
       "100": { bg_ratio: 10, ratio: 20, scale: 10,  pressure: 125 }
       "10":  { bg_ratio: 15, ratio: 25, scale: 10,  pressure: 100 }
 
+# =============================================================================
+# BLOCK 2 (REVISED): DISTRO MATRIX STRUCTURE WITH CORE UTILITY ARRAYS
+# DESCRIPTION: Maps package strings, admin groups, and core defense packages directly to target platform families. Includes openssl-1.1 for Archlinux dependency tracking.
+# =============================================================================
     distro_matrix:
       Archlinux:
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'openssl-1.1']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -53,6 +60,7 @@
         grub_compile_cmd: 'grub-mkconfig'
         grub_config_bios: '/boot/grub/grub.cfg'
       Debian:
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav-daemon', 'aide', 'lynis']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -65,6 +73,7 @@
         grub_compile_cmd: 'update-grub'
         grub_config_bios: '/boot/grub/grub.cfg'
       RedHat:
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -77,6 +86,7 @@
         grub_compile_cmd: 'grub2-mkconfig'
         grub_config_bios: '/boot/grub2/grub.cfg'
       Suse:
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -89,64 +99,61 @@
         grub_compile_cmd: 'grub2-mkconfig'
         grub_config_bios: '/boot/grub2/grub.cfg'
 
-    lynis_grade_template: >-
-      {% set s = post_score_clean | default(60) | int %}
-      {% if s < 65 %}🔴 UNPROTECTED BASELINE
-      {% elif s >= 65 and s < 75 %}🥉 BRONZE CORE (Stage 1 Data Baseline)
-      {% elif s >= 75 and s < 85 %}🥈 SILVER HARDENED (Certified Baseline Fortress)
-      {% elif s >= 85 and s < 95 %}🥇 GOLD HARDENED (Certified Operational Fortress)
-      {% else %}🏢 zFORTRESS POSTURE (Maximum Steel Protection Matrix){% endif %}
-
-# =============================================================================
-# PHASE 1: ENVIRONMENT HYDRATION & REPOSITORY BLUEPRINTS
-# DESCRIPTION: Non-destructively scans system paths for baseline requirements
-# (Ansible, gdisk, and collections). If already present, skips mirror sync loops 
-# entirely to prevent execution lockups or terminal hangs during live execution.
-# =============================================================================
   tasks:
+# =============================================================================
+# BLOCK 3: STAGE 1 FOUNDATION CERTIFICATE CHECK
+# DESCRIPTION: Interrogates target node filesystems to detect an official prior Stage 1 core certification tag.
+# =============================================================================
     - name: "PRE-FLIGHT | PROBE | Interrogate system for active Stage 1 Foundation Certificate"
       ansible.builtin.stat:
         path: "/etc/zero-trust-baseline.json"
       register: pre_flight_stage1_cert_check
       check_mode: false
-
-    - name: "PRE-FLIGHT | Automatically provision runtime dependencies and collections on target host"
+# =============================================================================
+# BLOCK 4: DYNAMIC DEPENDENCIES & NETADDR BOOTSTRAPPING
+# DESCRIPTION: Installs foundational package environments, core dependencies, and netaddr system-wide via low-level hooks.
+# =============================================================================
+    - name: "PRE-FLIGHT | Automatically provision runtime dependencies, netaddr, and collections on target host"
       ansible.builtin.raw: |
-        # Check-First Logic Gate: Instantly exit if core orchestration prerequisites are met
-        if command -v ansible >/dev/null 2>&1 && { command -v gdisk >/dev/null 2>&1 || command -v sgdisk >/dev/null 2>&1; } && ansible-galaxy collection list 2>/dev/null | grep -q 'ansible.posix'; then
-          echo "[+] SYSTEM VERIFICATION SUCCESSFUL: Pre-requisites fully satisfied. Skipping package manager loops."
+        if command -v ansible >/dev/null 2>&1 && \
+           { command -v gdisk >/dev/null 2>&1 || command -v sgdisk >/dev/null 2>&1; } && \
+           python3 -c "import netaddr" >/dev/null 2>&1 && \
+           ansible-galaxy collection list 2>/dev/null | grep -q 'ansible.posix'; then
+          echo "[+] SYSTEM VERIFICATION SUCCESSFUL: Pre-requisites and netaddr fully satisfied. Skipping package manager loops."
           exit 0
         fi
 
-        # Fallback Trigger: Execute target synchronization loops only on cache miss
         if command -v pacman >/dev/null 2>&1; then
           pacman -Sy --noconfirm
-          pacman -S --noconfirm --needed python python-pip gptfdisk ansible
+          pacman -S --noconfirm --needed python python-pip python-netaddr gptfdisk ansible
         elif command -v apt-get >/dev/null 2>&1; then
           apt-get update -y
-          apt-get install -y python3 python3-pip gdisk ansible
+          apt-get install -y python3 python3-pip python3-netaddr gdisk ansible
         elif command -v dnf >/dev/null 2>&1; then
-          dnf install -y python3 python3-pip gdisk ansible --nogpgcheck
+          dnf install -y python3 python3-pip python3-netaddr gdisk ansible --nogpgcheck
         elif command -v zypper >/dev/null 2>&1; then
-          zypper --non-interactive install python3 python3-pip gptfdisk ansible
+          zypper --non-interactive install python3 python3-pip python3-netaddr gptfdisk ansible
         fi
 
-        # Isolate collection downloads from network pipeline if already resident
+        if ! python3 -c "import netaddr" >/dev/null 2>&1; then
+          pip3 install netaddr --break-system-packages || pip3 install netaddr || true
+        fi
+
         if ! ansible-galaxy collection list 2>/dev/null | grep -q 'ansible.posix'; then
           ansible-galaxy collection install ansible.posix --force-with-deps || true
         fi
       changed_when: false
       failed_when: false
-
+# =============================================================================
+# BLOCK 5: SAFE ENVIRONMENTAL SETUP REFRESH
+# DESCRIPTION: Triggers a clean native Ansible fact discovery pass now that system packaging constraints and python libraries are verified.
+# =============================================================================
     - name: "PRE-FLIGHT | Safely initialize system environment fact discovery loops"
       ansible.builtin.setup:
       become: false
-
 # =============================================================================
-# PHASE 1: ENVIRONMENT HYDRATION & REPOSITORY BLUEPRINTS
-# DESCRIPTION: Targets systems running on the Archlinux distribution family.
-# Inspects local package manager config, downloads the BlackArch verification strap
-# pipeline, cryptographically authorizes keys, and integrates specialized pools.
+# BLOCK 6: BLACKARCH SUBSYSTEM SYNCHRONIZATION (ARCH ONLY)
+# DESCRIPTION: Downloads, cryptographically authorizes, and synchronizes secure BlackArch compliance repositories on matching hosts.
 # =============================================================================
     - name: "PRE-FLIGHT | ARCH | Bootstrapping BlackArch Cryptographic Mirror Substrates"
       ansible.builtin.shell: |
@@ -165,10 +172,8 @@
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
 # =============================================================================
-# PHASE 1: ENVIRONMENT HYDRATION & REPOSITORY BLUEPRINTS
-# DESCRIPTION: Automates the setup of the Paru compilation wrapper toolset.
-# Safely evaluates binary presence; if missing, isolates execution underneath
-# the discovered native user account (vega) to compile the git target from source.
+# BLOCK 7: PARU PACKAGE MANAGER WRAPPER AUDIT (ARCH ONLY)
+# DESCRIPTION: Investigates active file execution targets to detect the working existence of the Paru AUR compilation wrapper.
 # =============================================================================
     - name: "PRE-FLIGHT | ARCH | Check if Paru binary is present on host execution paths"
       ansible.builtin.command: "which paru"
@@ -176,7 +181,10 @@
       failed_when: false
       changed_when: false
       when: "ansible_facts['os_family'] == 'Archlinux'"
-
+# =============================================================================
+# BLOCK 8: DEVELOPMENT COMPILATION TOOL INJECTIONS (ARCH ONLY)
+# DESCRIPTION: Enforces deployment of base system compilers and Git hooks needed to build userland forensic software from secure source.
+# =============================================================================
     - name: "PRE-FLIGHT | ARCH | Inject development toolsets required for compilation"
       community.general.pacman:
         name:
@@ -187,7 +195,10 @@
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "local_paru_binary_probe.rc | default(1) != 0"
         - "not ansible_check_mode"
-
+# =============================================================================
+# BLOCK 9: PRIVILEGED AUR WRAPPER SOURCE COMPILATION (ARCH ONLY)
+# DESCRIPTION: Restricts operational privileges to compile and drop the Paru engine binary strictly under the native user layout context.
+# =============================================================================
     - name: "PRE-FLIGHT | ARCH | Build and install Paru wrapper package under native user context"
       ansible.builtin.shell: |
         set -euo pipefail
@@ -207,10 +218,8 @@
         - "local_paru_binary_probe.rc | default(1) != 0"
         - "not ansible_check_mode"
 # =============================================================================
-# PHASE 2: DEEP KERNEL RECONNAISSANCE & ATTRIBUTES SYNTHESIS
-# DESCRIPTION: Initiates deep infrastructure scans. Assesses system paths for GRUB
-# pbkdf2 passwords, executes block-layer mapping lookups via lsblk, and targets
-# /dev/mapper/root to confirm the true state of full-disk encryption.
+# BLOCK 10: INFRASTRUCTURE SECURITY & ENCRYPTION SCANS
+# DESCRIPTION: Queries GRUB locations for active passwords, extracts root mapping configurations, and checks for cached Lynis metrics.
 # =============================================================================
     - name: "PRE-FLIGHT | BOOT | Interrogate active system for existing bootloader password configurations"
       ansible.builtin.shell: |
@@ -252,6 +261,11 @@
       register: raw_cached_lynis_score
       when: "pre_flight_lynis_cache_check.stat.exists | bool"
 
+# =============================================================================
+# BLOCK 11: COMPLIANCE STATE ATTRIBUTE SYNTHESIS
+# DESCRIPTION: Consolidates root disk encryption properties, boot metrics, cache variables, and target compliance paths straight into task tracking memory.
+# =============================================================================
+
     - name: "PRE-FLIGHT | STATE | Synthesize and lock baseline architectural facts"
       ansible.builtin.set_fact:
         stage1_foundation_active: "{{ pre_flight_stage1_cert_check.stat.exists | bool }}"
@@ -260,15 +274,22 @@
         lynis_cache_available: "{{ pre_flight_lynis_cache_check.stat.exists | bool }}"
         dynamic_pre_score: "{{ (raw_cached_lynis_score.content | b64decode | trim | int) if pre_flight_lynis_cache_check.stat.exists | bool else None }}"
 
-    - name: "PRE-FLIGHT | STATE | Calculate initial compliance target tracks"
+    - name: "PRE-FLIGHT | STATE | Calculate state-machine compliance mode tracks"
       ansible.builtin.set_fact:
         compliance_track_level_3: "{{ stage1_foundation_active | bool }}"
-        autonomous_standalone_mode: "{{ not stage1_foundation_active | bool }}"
         compliance_retrospective_level_1: "{{ not stage1_foundation_active | bool and boot_password_is_protected | bool and root_disk_is_encrypted | bool }}"
         failsafe_runtime_only_mode: "{{ not stage1_foundation_active | bool and not root_disk_is_encrypted | bool }}"
+        stackable_mode: "{{ stage1_foundation_active | bool }}"
+        autonomous_standalone_mode: "{{ not stage1_foundation_active | bool }}"
+        
+        
+# =============================================================================
+# BLOCK 12: BASELINE COMPLIANCE VULNERABILITY AUDITING
+# DESCRIPTION: Evaluates target system vulnerability metrics on local cache misses and records configurations to cache storage.
+# =============================================================================
 
     - name: "COMPLIANCE | RECONNAISSANCE | Initialize system audit metrics on local cache miss"
-      ansible.builtin.shell: "lynis audit system --quick"
+      ansible.builtin.shell: "lynis audit system --quick --cronjob"
       args:
         executable: /bin/bash
       register: live_lynis_baseline_scan
@@ -276,14 +297,15 @@
       changed_when: false
       when:
         - "not ansible_check_mode"
-        - "not lynis_cache_available | bool"
+        - "pre_flight_lynis_cache_check.stat.exists == false"
 
     - name: "COMPLIANCE | PARSING | Extract baseline hardening metrics from raw output streams"
       ansible.builtin.set_fact:
         dynamic_pre_score: "{{ (live_lynis_baseline_scan.stdout | default('', true) | regex_search('Hardening index : (\\d+)', '\\1') | default(['65'], true)) | first | int }}"
       when:
         - "not ansible_check_mode"
-        - "not lynis_cache_available | bool"
+        - "pre_flight_lynis_cache_check.stat.exists == false"
+
     - name: "COMPLIANCE | PROVISIONING | Establish local repository bounds for framework cache storage"
       ansible.builtin.file:
         path: "/var/cache/lynis"
@@ -293,7 +315,7 @@
         mode: '0755'
       when:
         - "not ansible_check_mode"
-        - "not lynis_cache_available | bool"
+        - "pre_flight_lynis_cache_check.stat.exists == false"
 
     - name: "COMPLIANCE | STORAGE | Commit parsed verification parameters permanently to local block"
       ansible.builtin.copy:
@@ -304,15 +326,19 @@
         mode: '0600'
       when:
         - "not ansible_check_mode"
-        - "not lynis_cache_available | bool"
+        - "pre_flight_lynis_cache_check.stat.exists == false"
 
     - name: "COMPLIANCE | NOTIFY | Render calculated endpoint security baseline validation metrics"
       ansible.builtin.debug:
         msg: >-
           📊 [ FRAMEWORK AUDIT PROTOCOL ]:
           Initial Hardening Grade resolved at [ {{ dynamic_pre_score }} points ].
-          Source: {{ 'LOCAL DISK PERFORMANCE CACHE' if lynis_cache_available | bool else 'LIVE SYSTEM COGNITIVE PROBE' }}
+          Source: {{ 'LOCAL DISK PERFORMANCE CACHE' if pre_flight_lynis_cache_check.stat.exists == true else 'LIVE SYSTEM COGNITIVE PROBE' }}
 
+# =============================================================================
+# BLOCK 13: BOOTLOADER PROTECTION PASS-GATES
+# DESCRIPTION: Pauses framework execution to securely query and register a master encryption key on unprotected standalone nodes.
+# =============================================================================
     - name: "BOOT | SECURITY GATE | Securely prompt for master passphrase on unprotected standalone nodes"
       ansible.builtin.pause:
         prompt: |
@@ -330,7 +356,10 @@
       when:
         - "autonomous_standalone_mode | bool"
         - "not boot_password_is_protected | bool"
-
+# =============================================================================
+# BLOCK 14: CRYPTOGRAPHIC PBKDF2 PASSWORD GENERATION
+# DESCRIPTION: Compiles the registered raw credential properties non-interactively into a safe PBKDF2 hash payload.
+# =============================================================================
     - name: "BOOT Hardening | AUTOMATION ENGINE | Non-interactively compile cryptographic PBKDF2 hash payload"
       ansible.builtin.shell: |
         echo -e "{{ front_loaded_standalone_passphrase.user_input }}\n{{ front_loaded_standalone_passphrase.user_input }}" | grub-mkpasswd-pbkdf2 | grep -o "grub.pbkdf2.*"
@@ -341,8 +370,11 @@
         - "not boot_password_is_protected | bool"
         - "front_loaded_standalone_passphrase.user_input is defined"
         - "front_loaded_standalone_passphrase.user_input | length > 0"
-
-      - name: "BOOT HARDENING | INJECTION | Commit secure master credentials into user customized parameters"
+# =============================================================================
+# BLOCK 15: BOOT CONFIGURATION HARDENING INJECTIONS
+# DESCRIPTION: Commits the generated cryptographic hash payload securely into custom system boot customizers to lock runtime edits.
+# =============================================================================
+    - name: "BOOT HARDENING | INJECTION | Commit secure master credentials into user customized parameters"
       ansible.builtin.blockinfile:
         path: "/etc/grub.d/40_custom"
         marker: "# {mark} ANSIBLE AUTONOMOUS BOOTLOADER PASSWORD BLOCK"
@@ -354,8 +386,11 @@
         - "not boot_password_is_protected | bool"
         - "calculated_standalone_grub_hash.stdout is defined"
         - "calculated_standalone_grub_hash.stdout | length > 0"
-
-      - name: "SCAN | Probe motherboard boot firmware directory existence"
+# =============================================================================
+# BLOCK 16: MULTI-LAYER SYSTEM GEOMETRY PROBES
+# DESCRIPTION: Performs advanced probing across hardware links to capture system partition mappings and hardware metadata.
+# =============================================================================
+    - name: "SCAN | Probe motherboard boot firmware directory existence"
       ansible.builtin.stat:
         path: "/sys/firmware/efi"
       register: efi_directory_check
@@ -434,11 +469,24 @@
       changed_when: false
       failed_when: false
       check_mode: false
-
+# =============================================================================
+# BLOCK 17: RESILIENT LOCAL SUBNET EXTRACTION
+# DESCRIPTION: Sanitizes and calculates the active network range boundaries using a fallback-shielded Jinja expression.
+# =============================================================================
     - name: "SCAN | STATE | Calculate true local base network subnet boundary block"
       ansible.builtin.set_fact:
-        dynamic_home_net: "{{ live_active_cidr_raw.stdout | default('192.168.1.0/24') | ansible.utils.ipsubnet(0) }}"
+        dynamic_home_net: >-
+          {%- set raw_ip = live_active_cidr_raw.stdout_lines | default(['']) | first | trim -%}
+          {%- if '/' in raw_ip -%}
+            {{ raw_ip | ansible.utils.ipsubnet }}
+          {%- else -%}
+            192.168.1.0/24
+          {%- endif -%}
       failed_when: false
+# =============================================================================
+# BLOCK 18: SYSTEM PROFILE METADATA SYNTHESIS
+# DESCRIPTION: Evaluates and locks virtualization settings, user contexts, form factors, and file layout attributes.
+# =============================================================================
 
     - name: "SCAN | Synthesize virtualization and media profiles"
       ansible.builtin.set_fact:
@@ -465,7 +513,7 @@
     - name: "SCAN | Synthesize translated hardware form-factor profile facts"
       ansible.builtin.set_fact:
         hardware_form_factor: >-
-          {%- set chassis_int = (raw_dmi_chassis_id.content | b64decode | trim | int) if (raw_dmi_chassis_id.content is defined and raw_dmi_chassis_id.content) else 0 -%}
+          {%- set chassis_int = (raw_dmi_chassis_id['content'] | b64decode | replace('\n', '') | trim | int) if (raw_dmi_chassis_id.content is defined and raw_dmi_chassis_id.content) else 0 -%}
           {%- if battery_node_check.stat.exists or chassis_int in [8, 9, 10, 14] -%}
           LAPTOP / PORTABLE WORKSTATION
           {%- elif chassis_int in [3, 4, 5, 6, 7, 15, 16] -%}
@@ -475,6 +523,7 @@
           {%- else -%}
           STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)
           {%- endif -%}
+
     - name: "SCAN | Synthesize primary system hardware and layout facts"
       ansible.builtin.set_fact:
         system_ram_gb: "{{ (ansible_facts['memtotal_mb'] | int / 1024) | round(0, 'common') | int }}"
@@ -511,12 +560,9 @@
     - name: "SMART EVALUATOR | Determine if layout matches defined standards or triggers bypass fallback"
       ansible.builtin.set_fact:
         boot_configuration_bypass: "{{ not (is_fortress_case | bool or (ansible_facts['os_family'] == 'Archlinux' and not has_systemd_hook | bool) or ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'RedHat' or ansible_facts['os_family'] == 'Suse') }}"
-
 # =============================================================================
-# PHASE 3: STORAGE TOPOLOGY INTEGRATION & SWAP HARDENING
-# DESCRIPTION: Applies the strict mutually exclusive swap tree. Interrogates
-# raw block layout parameters; if a physical swap partition is detected, short-circuits
-# filesystem mode entirely to crypt-map that slice via random-keyed AES-XTS.
+# BLOCK 19: PHYSICAL NON-BTRFS SWAP TARGET PROBES
+# DESCRIPTION: Investigates active low-level storage maps to locate and identify discrete physical swap partition components.
 # =============================================================================
     - name: "SWAP HARDENING | RECONNAISSANCE | Discover physical non-btrfs raw swap partition segments"
       ansible.builtin.shell: |
@@ -532,7 +578,10 @@
     - name: "SWAP HARDENING | STATE | Compile mutually exclusive partition tracking variables"
       ansible.builtin.set_fact:
         has_swap_partition: "{{ true if (target_physical_swap_handle.stdout is defined and target_physical_swap_handle.stdout | length > 0) else false }}"
-
+# =============================================================================
+# BLOCK 20: CRYPT-MAPPED PARTITION CONFIGURATION (SSD ONLY)
+# DESCRIPTION: Erases unmanaged partition parameters and locks solid state devices inside random-keyed AES-XTS layers.
+# =============================================================================
     - name: "SWAP HARDENING | EXCLUSION | Cleanly purge unmanaged legacy entries from static storage maps"
       ansible.builtin.lineinfile:
         path: "/etc/fstab"
@@ -563,7 +612,10 @@
         - "not is_mechanical_drive | bool"
         - "not failsafe_runtime_only_mode | bool"
         - "not ansible_check_mode"
-
+# =============================================================================
+# BLOCK 21: PERSISTENT BTRFS LEDGER MOUNTING
+# DESCRIPTION: Enforces fstab mounting properties across all core secure system subvolumes if a native Btrfs structure is verified.
+# =============================================================================
     - name: "STORAGE | LEDGER | Commit standardized subvolumes to physical fstab parameters"
       ansible.posix.mount:
         path: "{{ item.mountpoint }}"
@@ -584,7 +636,10 @@
         - "is_btrfs_layout is defined and is_btrfs_layout | bool"
         - "not has_swap_partition | bool"
         - "not ansible_check_mode"
-
+# =============================================================================
+# BLOCK 22: VOLATILE ALLOCATION SWAPFILE APPRAISALS
+# DESCRIPTION: Evaluates file footprints against baseline formula boundaries, shielding skipped checks with default filters.
+# =============================================================================
     - name: "STORAGE | SWAPFILE | Check physical presence of existing swapfile allocation"
       ansible.builtin.stat:
         path: "/swap/swapfile"
@@ -622,8 +677,11 @@
         - "is_btrfs_layout is defined and is_btrfs_layout | bool"
         - "not has_swap_partition | bool"
         - "target_swapfile_check.stat.exists | default(false)"
-        - "not swapfile_size_mismatch | bool"
-
+        - "not swapfile_size_mismatch | default(false) | bool"
+# =============================================================================
+# BLOCK 23: SHIELDED FALLBACK SWAPFILE PROVISIONING
+# DESCRIPTION: Allocates fallback storage blocks using traditional or Btrfs rules, applying the default(false) check fix.
+# =============================================================================
     - name: "STORAGE | SWAPFILE | Build secure Btrfs fallback block if no physical swap partition exists"
       ansible.builtin.shell: |
         set -euo pipefail
@@ -640,9 +698,8 @@
       when:
         - "is_btrfs_layout is defined and is_btrfs_layout | bool"
         - "not ansible_check_mode"
-        - "swapfile_size_mismatch | bool"
+        - "swapfile_size_mismatch | default(false) | bool"
         - "not has_swap_partition | bool"
-
 
     - name: "SWAP CONFIG | ALLOCATION | Traditional swapfile allocation block if target platform is non-btrfs filesystem"
       ansible.builtin.shell: |
@@ -665,12 +722,9 @@
       ansible.builtin.debug:
         msg: "⚙️  SWAP INFRASTRUCTURE CONFIGURATION COMPLETE: Active validation track target set to [ {{ target_formula_swap_mb }} MB swapfile fallback ]"
       when: "not has_swap_partition | bool"
-
 # =============================================================================
-# PHASE 4: PERFORMANCE TUNING & RESOURCE ALLOCATION CONTROLS
-# DESCRIPTION: Configures volatile memory compression optimizations, enforces
-# OOM killer daemon boundaries, and updates kernel-level sysctl parameters
-# tuned specifically to the system's electrical and mechanical storage type.
+# BLOCK 24: VOLATILE RAM ACCELERATION TUNING
+# DESCRIPTION: Deploys prioritized memory layouts via ZRAM configurations, configures OOM frameworks, and cleans legacy profiles.
 # =============================================================================
     - name: "ZRAM PROVISION | Deploy chosen compression algorithm setup matching scanned hardware profile"
       ansible.builtin.copy:
@@ -702,7 +756,10 @@
       loop:
         - "/etc/sysctl.d/99-swappiness.conf"
         - "/etc/sysctl.d/50-memory-tuning.conf"
-
+# =============================================================================
+# BLOCK 25: HARDWARE-AWARE SYSCTL TUNING INJECTIONS
+# DESCRIPTION: Drops hardware-aware kernel performance controls customized to mechanical, hypervisor, or solid state storage configurations.
+# =============================================================================
     - name: "HARDENING | MEMORY MAPS | Compile optimized dynamic sysctl hardware profile"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-tunning.conf"
@@ -738,12 +795,9 @@
         group: root
       become: true
       notify: "Trigger Active System Kernel Flush"
-
 # =============================================================================
-# PHASE 5: USERLAND INTERFACE CONTAINMENT & ADAPTIVE VOLATILE VAULTS
-# DESCRIPTION: Restricts mount boundaries on transient runtime interfaces (/tmp, /dev/shm)
-# and instantiates an automated, proportional multi-tenant secure vault subsystem
-# featuring hard quota enforcement on discovered Btrfs layout arrays.
+# BLOCK 26: TRANSIENT INTERFACE MOUNTING & VAULT UTILITY LAYOUTS
+# DESCRIPTION: Restricts mount options on virtual execution interfaces and builds quota-enforcing cryptographic vault utilities.
 # =============================================================================
     - name: "STORAGE | HARDENING | Secure virtual execution interfaces universally inside fstab arrays"
       ansible.builtin.blockinfile:
@@ -843,12 +897,9 @@
         owner: root
         group: "{{ distro_matrix[ansible_facts['os_family']]['admin_group'] if ansible_facts['os_family'] in distro_matrix else 'wheel' }}"
       when: "secure_vault_enabled | bool"
-
 # =============================================================================
-# PHASE 6: HOST COMPLIANCE PROVISIONING & INTERFACE EDGE SECURITY
-# DESCRIPTION: Deploys core host-defense software profiles, installs Tripwire
-# via an isolated AUR track, restricts link-layer sniffer systemd units,
-# and locks physical hardware adapters inside a firewalld containment perimeter.
+# BLOCK 27: LINK-LAYER NETWORK GUARD INJECTIONS
+# DESCRIPTION: Generates drop-in execution paths for network audit utilities to apply strict systemd sandboxing properties over monitoring units.
 # =============================================================================
     - name: "COMPLIANCE | ARPWATCH | Establish configuration drop-in containment directory universally"
       ansible.builtin.file:
@@ -881,6 +932,11 @@
           CapabilityBoundingSet=CAP_NET_RAW
           NoNewPrivileges=true
       notify: "Reload Active Systemd Core"
+
+# =============================================================================
+# BLOCK 28: FIREWALD DYNAMIC PERIMETER CONTROLS
+# DESCRIPTION: Automates network containment configurations, dropping external connection proxies, and isolating physical ports into drop cages.
+# =============================================================================
 
     - name: "FIREWALLD | ENFORCE INTERFACE CONTAINMENT | Set baseline architecture zones cleanly"
       ansible.builtin.shell: |
@@ -917,19 +973,50 @@
         - "not ansible_check_mode"
         - "firewalld_native | bool"
 
-      - name: "PROVISIONING | SECURE SUITE | Enforce presence of all framework host defense utilities"
+# =============================================================================
+# BLOCK 29 (REVISED): DEFENSIVE INFRASTRUCTURE PROVISIONING GATES
+# DESCRIPTION: Natively queries platform keys to enforce framework host defense utilities without using invalid fallback variables.
+# =============================================================================
+
+    - name: "PROVISIONING | SECURE SUITE | Enforce presence of all framework host defense utilities"
       ansible.builtin.package:
-        name: "{{ distro_matrix[ansible_facts['os_family']]['core_packages'] | default(arch_vars.core_packages) if ansible_facts['os_family'] in distro_matrix else arch_vars.core_packages }}"
+        name: "{{ distro_matrix[ansible_facts['os_family']]['core_packages'] | default(['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis']) }}"
         state: present
       when: "not ansible_check_mode"
 
-    - name: "PROVISION | ARCH | Install specialized forensic tracking engine from AUR via Paru wrapper"
-      ansible.builtin.shell: "paru -S --noconfirm --needed tripwire-git"
-      become: true
-      become_user: "{{ discovered_primary_user | default('vega') }}"
+    - name: "PROVISION | UNIVERSAL | Install Tripwire forensic engine from native repositories"
+      ansible.builtin.package:
+        name: "tripwire"
+        state: present
+      when:
+        - "ansible_facts['os_family'] != 'Archlinux'"
+        - "not ansible_check_mode"
+
+    - name: "COMPILER CONTROL | NOTIFY | Render background build execution alerts"
+      ansible.builtin.debug:
+        msg: |
+          ====================================================================================
+          ⏳ [ COMPILER ACTIVATION PROTOCOL: HEADLESS SOURCE ASSEMBLY ]
+          ====================================================================================
+            ↳ AGENT TARGET ENGINE  : TRIPWIRE (FORENSIC POSTURE LOCK)
+            ↳ ESTIMATED TIME ENGINE: 15-20 Mins Depending your Cpu (PRE-COMPILED BINARY INGESTION)
+          ===================================================================================
+            NOTICE: This process synchronizes your custom architectural parameters 
+            with the native repository database. The terminal output will pause 
+            briefly while the package wrapper satisfies the forensic system layers.
+            Do NOT abort or intercept the execution loop.
+          ====================================================================================
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
+
+    - name: "PROVISION | ARCH | Deploy cached forensic tracking engine archive natively via root shell"
+      ansible.builtin.shell: "pacman -U --noconfirm /home/{{ discovered_primary_user }}/.cache/paru/clone/tripwire-git/tripwire-git-*.pkg.tar.zst"
+      become: true
+      when:
+        - "ansible_facts['os_family'] == 'Archlinux'"
+        - "not ansible_check_mode"
+        - "discovered_primary_user is defined"
 
     - name: "PROVISION | HYBRID NETWORK | Install standard Snort 2.9 engine on long-term stable anchors"
       ansible.builtin.package:
@@ -958,10 +1045,6 @@
         group: root
         mode: '0644'
         content: |
-          -- =========================================================================
-          -- 🛡️ SNORT 3 AUTOMATED HARDWARE-AWARE NETWORK CONFIGURATION MATRIX
-          -- CUSTOM ENGINE POSTURE CONFIGURATION DEVELOPED BY MEDARDO VEGA
-          -- =========================================================================
           interfaces = {
               name = "{{ primary_network_interface | default('wls1') }}"
           }
@@ -973,23 +1056,42 @@
               rules = [[ include local.rules ]]
           }
       when: "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
-    - name: "CLAMAV | CONFIGURATION | Inject low-priority resource management parameters"
+
+    - name: "CLAMAV | CONFIGURATION | Inject hardware-proportional resource management parameters"
       ansible.builtin.copy:
         dest: "/etc/systemd/system/{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}.service.d/override.conf"
-        create: true
         owner: root
         group: root
         mode: '0644'
         content: |
           [Service]
           Nice=19
-          CPUQuota=10%
           CPUSchedulingPolicy=idle
-          MemoryMax=1.2G
-          MemoryHigh=1.0G
+          CPUQuota={{ calculated_quota | trim }}%
+          MemoryHigh={{ calculated_mem_high | trim }}
+          MemoryMax={{ calculated_mem_max | trim }}
+      vars:
+        calculated_quota: >-
+          {%- if system_ram_gb | int < 4 -%} 10
+          {%- elif system_ram_gb | int >= 4 and system_ram_gb | int < 8 -%} 15
+          {%- elif system_ram_gb | int >= 8 and system_ram_gb | int <= 16 -%} 20
+          {%- else -%} 25
+          {%- endif -%}
+        calculated_mem_high: >-
+          {%- if system_ram_gb | int < 4 -%} 1.0G
+          {%- elif system_ram_gb | int >= 4 and system_ram_gb | int < 8 -%} 1.2G
+          {%- elif system_ram_gb | int >= 8 and system_ram_gb | int <= 16 -%} 1.5G
+          {%- else -%} 2.0G
+          {%- endif -%}
+        calculated_mem_max: >-
+          {%- if system_ram_gb | int < 4 -%} 1.2G
+          {%- elif system_ram_gb | int >= 4 and system_ram_gb | int < 8 -%} 1.5G
+          {%- elif system_ram_gb | int >= 8 and system_ram_gb | int <= 16 -%} 2.0G
+          {%- else -%} 3.0G
+          {%- endif -%}
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
-
+      
     - name: "CLAMAV | ENFORCEMENT | Startup activation gate conditioned on memory bounds"
       ansible.builtin.systemd:
         name: "{{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}"
@@ -998,7 +1100,7 @@
       failed_when: false
       when:
         - "not ansible_check_mode"
-        - "ansible_facts['memtotal_mb'] | int >= 4096"
+        - "ansible_facts['memtotal_mb'] | int >= 3500"
 
     - name: "AIDE | SCHEDULER | Deploy daily oneshot service check files"
       ansible.builtin.copy:
@@ -1049,12 +1151,10 @@
       notify: "Reload Active Systemd Core"
 
 # =============================================================================
-# PHASE 7: FORENSIC INITIALIZATIONS & VOLATILE HOOK MECHANISMS
-# DESCRIPTION: Manages the runtime initialization loops for active integrity
-# agents. Conditioned directly on drive rotational bits to initiate immediate
-# cryptographic database compiles for flash devices while safely deferring paths
-# for spinning platters to prevent hardware wear.
+# BLOCK 30: FORENSIC INIT, AUDIT LOCKING, PLAY SUMMARY & HANDLERS
+# DESCRIPTION: Finalizes forensic trackers, password hashing parameters, immutable system call logging, reports, and playbook handlers.
 # =============================================================================
+
     - name: "INTRUSION DETECTION | NOTIFY | Render operational forensic scan warnings"
       ansible.builtin.debug:
         msg: |
@@ -1063,12 +1163,6 @@
           ======================================================================
             ↳ HARDWARE LAYER INGESTION   : HIGH-SPEED FLASH CELLS DETECTED (SSD)
             ↳ AGENT SCHEDULING INTERFACES: DAILY CONTINUOUS ROTATION FORCED
-              • TRIPWIRE AUDIT BLUEPRINT : STAGED ➔ TRIGGER AUTOMATIC AT 01:00 AM
-              • AIDE INTEGRITY ENGINES   : STAGED ➔ TRIGGER AUTOMATIC AT 03:00 AM
-          ======================================================================
-            STATE REMINDER: Launching non-interactive cryptographic compilation
-            and ledger hashing loops. This operation is highly processor intensive
-            and will occupy system I/O bands until full baseline completion...
           ======================================================================
       when:
         - "not is_mechanical_drive | bool"
@@ -1105,19 +1199,6 @@
             ↳ HARDWARE LAYER INGESTION   : ROTATIONAL PLATTER DRIVE DETECTED (HDD)
             ↳ COMPLIANCE LIFECYCLE TRACK : AUTOMATED BACKGROUND OVERRIDE ACTIVATED
           ======================================================================
-            CRITICAL BYPASS LOGIC: Live background filesystem cryptographic
-            hashing has been deferred to safeguard physical storage components
-            from extreme drive-head thrashing and preserve processing velocity.
-
-            To finalize your system tamper-evidence baseline infrastructure post
-            reboot, you must manually run these setup steps when system I/O is low:
-
-              1) Initialize AIDE Master Database:
-                 👉 sudo aide --init && sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
-
-              2) Initialize Tripwire Signature Ledger:
-                 👉 sudo tripwire --init
-          ======================================================================
       when:
         - "is_mechanical_drive | bool"
         - "not failsafe_runtime_only_mode | bool"
@@ -1131,27 +1212,9 @@
         group: root
         content: |
           #!/usr/bin/env bash
-          # ======================================================================
-          # 🔒 SYSTEM INITIALIZATION: ZERO-TRUST ENDPOINT BASELINE NOTIFICATION
-          # ======================================================================
           if [ "$(id -u)" -eq 0 ] || [ "$(id -u)" -eq 1000 ]; then
               if [ -f /root/ZERO-TRUST-SYSTEM-INTEGRITY-AUDIT-PROTOCOL.txt ]; then
-                  echo ""
-                  echo "======================================================================"
-                  echo "🛡️  ZERO-TRUST FRAMEWORK: POST-BOOT HARDWARE AGENT PROMPT"
-                  echo "======================================================================"
-                  echo "  ↳ MANDATORY DEPLOYMENT VECTOR SEQUENCE DISCOVERED"
-                  echo "  ↳ ENVIRONMENT LINEAGE INTERROGATION TRACK: COMPLETED"
-                  echo "======================================================================"
-                  echo "  NOTICE: System infrastructure timers are fully staged and enabled."
-                  echo "  To establish complete data isolation, cryptographic tracking, and"
-                  echo "  active perimeter protection layers, you must synchronize your"
-                  echo "  hardware database baselines manually prior to midnight execution."
-                  echo ""
-                  echo "  ➡️  ACTION REQUIRED: Execute the deployment protocol commands inside:"
-                  echo "      👉 cat /root/ZERO-TRUST-SYSTEM-INTEGRITY-AUDIT-PROTOCOL.txt"
-                  echo "======================================================================"
-                  echo ""
+                  echo "➡️  ACTION REQUIRED: Execute the deployment protocol commands inside /root/ZERO-TRUST-SYSTEM-INTEGRITY-AUDIT-PROTOCOL.txt"
               fi
           fi
       when:
@@ -1166,7 +1229,6 @@
         group: root
         content: |
           #!/usr/bin/env bash
-          # Self-destructing protocol: Purges reminder hook once initialization steps are validated
           if [ ! -f /var/lib/aide/aide.db.new.gz ] && [ -f /var/lib/aide/aide.db.gz ]; then
               rm -f /etc/profile.d/zero_trust_reminder.sh
               rm -f /etc/cron.daily/self-destruct-reminder
@@ -1189,9 +1251,7 @@
               ACTIVE_TRUSTED=$(firewall-cmd --zone=trusted --list-interfaces 2>/dev/null || echo "")
               ACTIVE_SOURCES=$(firewall-cmd --zone=trusted --list-sources 2>/dev/null || echo "")
               if [[ ! "${ACTIVE_TRUSTED}" =~ (proton|pvpn|tun|wg) ]] && [[ ! "${ACTIVE_SOURCES}" =~ (proton|pvpn|tun|wg) ]]; then
-                  echo "[-] SECURITY BREACH CONTAINMENT ALERT: Active VPN adapter disconnected!" >&2
-                  echo -e "\a" > /dev/tty0 2>/dev/null || echo -e "\a" || true
-                  wall "[-] ZERO-TRUST ALERT: VPN Leakage Perimeter Breach Detected! Physical interfaces remain trapped inside DROP zone containment blocks." 2>/dev/null || true
+                  wall "[-] ZERO-TRUST ALERT: VPN Leakage Perimeter Breach Detected!" 2>/dev/null || true
               fi
               sleep 5
           done
@@ -1212,8 +1272,6 @@
           ExecStart=/usr/bin/vpn-leak-monitor
           Restart=always
           RestartSec=10
-          StandardOutput=journal
-          StandardError=journal
 
           [Install]
           WantedBy=multi-user.target
@@ -1226,12 +1284,6 @@
       failed_when: false
       when: "not ansible_check_mode"
 
-# =============================================================================
-# PHASE 8: IMMUTABLE AUDITING, CREDENTIAL ENCRYPTION & KERNEL SYSTEM CALL TREES
-# DESCRIPTION: Enforces high-entropy cryptographic password stretching factors,
-# purges default auditing blueprints, and locks down an absolute, un-falsifiable
-# kernel system call tracking engine capped with the immutable lock (-e 2).
-# =============================================================================
     - name: "PAM | HARDENING | Inject strict password stretching algorithm limits into system auth"
       ansible.builtin.lineinfile:
         path: "/etc/login.defs"
@@ -1253,7 +1305,7 @@
       failed_when: false
       when: "not ansible_check_mode"
 
-     - name: "AUDITD | ENFORCE PARENT PATHS | Ensure rule directories exist for Debian architectures"
+    - name: "AUDITD | ENFORCE PARENT PATHS | Ensure rule directories exist for Debian architectures"
       ansible.builtin.file:
         path: "/etc/audit/rules.d"
         state: "directory"
@@ -1307,12 +1359,12 @@
         mode: "0600"
       when: "not ansible_check_mode"
 
-# =============================================================================
-# PHASE 9: PERIMETER CONFINEMENT, SNAPSHOT SCHEDULERS & ATTESTATION SUMMARY
-# DESCRIPTION: Activates hardware-isolated interface drop cages, establishes 
-# custom 3-pass daily Snapper timeline snapshot rules, launches security daemons,
-# and outputs the final full architectural attestation verification report.
-# =============================================================================
+
+# =======================================================================================
+# BLOCK 31: FIREWALL PERIMETER KILLS & SNAPPER RECOVERY TIMELINES
+# DESCRIPTION: Finalizes the trusted tunnel loop parameters, builds snapper cron-free snapshot configurations, and launches security utility processes.
+# =======================================================================================
+
     - name: "STAGE 1 KILLSWITCH | Force scanned physical interfaces into block zone permanently"
       ansible.builtin.command: "firewall-cmd --permanent --zone=block --add-interface={{ item }}"
       loop: "{{ active_network_interfaces.stdout.split(',') if active_network_interfaces.stdout is defined else [] }}"
@@ -1358,33 +1410,35 @@
         state: "started"
         enabled: true
       when: "not ansible_check_mode"
+
     - name: "SECURITY SERVICES | NOTIFY | Render core tool activation states live to terminal"
       ansible.builtin.debug:
         msg: |
           ======================================================================
           ⚙️  [ POST-HARDENING PROTOCOL: CORE UTILITY ACTIVATION LEDGER ]
           ======================================================================
-            ↳ FAIL2BAN INTRUSION JAIL       : ENABLED & STARTED [SUCCESS]
-            ↳ USBGUARD PERIPHERAL FIREWALL  : ENABLED & STARTED [SUCCESS]
-            ↳ ARPWATCH LINK-LAYER SNIFFER   : ENABLED & STARTED [SUCCESS]
-            ↳ SNORT INTEGRITY INTRUSION DEFI: ENABLED & STARTED [SUCCESS]
-            ↳ CLAMAV ANTIVIRUS DAEMON POOL  : ENABLED & OPTIMIZED [SUCCESS]
-            ↳ AIDE FILE INTEGRITY TIMERS    : ENFORCED & ARMED [SUCCESS]
-            ↳ TRIPWIRE BINARY SIGNATURES    : ENFORCED & ARMED [SUCCESS]
-            ↳ VPNLEAK REALTIME TUNNEL GUARD : ENABLED & STARTED [SUCCESS]
+          ↳ FAIL2BAN INTRUSION JAIL       : ENABLED & STARTED [SUCCESS]
+          ↳ USBGUARD PERIPHERAL FIREWALL  : ENABLED & STARTED [SUCCESS]
+          ↳ ARPWATCH LINK-LAYER SNIFFER   : ENABLED & STARTED [SUCCESS]
+          ↳ SNORT INTEGRITY INTRUSION DEFI: ENABLED & STARTED [SUCCESS]
+          ↳ CLAMAV ANTIVIRUS DAEMON POOL  : ENABLED & OPTIMIZED [SUCCESS]
+          ↳ AIDE FILE INTEGRITY TIMERS    : ENFORCED & ARMED [SUCCESS]
+          ↳ TRIPWIRE BINARY SIGNATURES    : ENFORCED & ARMED [SUCCESS]
+          ↳ VPNLEAK REALTIME TUNNEL GUARD : ENABLED & STARTED [SUCCESS]
           ======================================================================
-            NOTICE: Core persistent defense utilities and network sniffing daemons 
-            are initializing to lock your custom architectural parameters 
-            permanently into system state matching your form factor.
+          NOTICE: Core persistent defense utilities and network sniffing daemons 
+          are initializing to lock your custom architectural parameters 
+          permanently into system state matching your form factor.
           ======================================================================
 
     - name: "SECURITY SERVICES | Activate and enable baseline security infrastructure daemons"
       ansible.builtin.systemd:
-        name: "{{ item }}"
+        name: "{{ 'arpwatch@' ~ primary_network_interface if (item == 'arpwatch' and ansible_facts['os_family'] in ['Archlinux', 'Debian']) else item }}"
         state: "started"
         enabled: true
-      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-monitor.service", "auditd"]
+      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-monitor.service", "auditd", "arpwatch"]
       failed_when: false
+
 
     - name: "COMPLIANCE | LYNIS | Enforce custom security profiling configuration metrics universally"
       ansible.builtin.copy:
@@ -1397,6 +1451,8 @@
           plugin:usbguard:enabled:true
           log_file:/var/log/usbguard/usbguard-audit.log
 
+
+          
     - name: "COMPLIANCE | Run post-deployment security hardening verification scan"
       ansible.builtin.shell: "lynis audit system --quick"
       args:
@@ -1406,6 +1462,10 @@
       changed_when: false
       when: "not ansible_check_mode"
 
+# =============================================================================
+# BLOCK 32: COMPLIANCE METRICS CALCULATIONS, PLAY SUMMARY REPORT, AND HANDLERS
+# DESCRIPTION: Computes performance deltas, displays the final attestation posture log ledger, and mounts background playbook execution handlers.
+# =============================================================================
     - name: "COMPLIANCE | Calculate real-time framework execution metrics"
       ansible.builtin.set_fact:
         lynis_pre_score_final: "{{ dynamic_pre_score | default('65') | int }}"
@@ -1433,27 +1493,27 @@
         msg: "{{ report_content.split('\n') }}"
       vars:
         report_content: |
-          ======================================================================
+          =======================================================================================
           🏆 STAGE 2 ZERO-TRUST SYSTEM POST-HARDENING REPORT LEDGER
-          ======================================================================
+          =======================================================================================
           🛡️ SYSTEM PROVENANCE SECURITY ATTESTATION RECORD:
             ↳ FINAL HARDENING GRADE DESIGNATION: {{ security_tier_grade }}
-          ======================================================================
-          📊 AUTOMATED CONFIGURATION TOPO DETECTIONS COMPLETED SUCCESSFUL:
-            ↳ NATIVE HARDWARE ROLE PROFILE    : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)') }} ]
-            ↳ PRIMARY CAPTURED ADAPTER LINE   : {{ primary_network_interface | default('wls1') }}
-            ↳ CALCULATED ACTIVE SPECTRUM LAN  : {{ dynamic_home_net | default('192.168.1.0/24') }}
-            ↳ STAGE 1 BASELINE HISTORY        : {{ 'OFFICIAL FOUNDATION CERTIFICATE VALIDATED' if stage1_foundation_active | bool else 'STANDALONE OR ATYPICAL PROVENANCE' }}
+          =======================================================================================
+          📊 AUTOMATED CONFIGURATION TOPO DETECTIONS COMPLETED SUCCESSFULLY:
+            ↳ NATIVE HARDWARE ROLE PROFILE     : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)') }} ]
+            ↳ PRIMARY CAPTURED ADAPTER LINE    : {{ primary_network_interface | default('wls1') }}
+            ↳ CALCULATED ACTIVE SPECTRUM LAN   : {{ dynamic_home_net | default('192.168.1.0/24') }}
+            ↳ STAGE 1 BASELINE HISTORY         : {{ 'OFFICIAL FOUNDATION CERTIFICATE VALIDATED' if stage1_foundation_active | bool else 'STANDALONE OR ATYPICAL PROVENANCE' }}
             ↳ STORAGE AT-REST ENCRYPTION SHIELD: {{ 'ACTIVE LUKS WRAPPER MAPPED (/dev/mapper/root)' if root_disk_is_encrypted | bool else '⚠️  UNENCRYPTED (FAILSAFE RUNTIME CONTAINMENT ACTIVE)' }}
-            ↳ BOOTLOADER PASS-GATE SECURITY   : {{ 'CRYPTOGRAPHICALLY LOCKED via PBKDF2' if (boot_password_is_protected | bool or not compliance_track_level_3 | bool) else 'TRUSTED VIA STAGE 1 INFRASTRUCTURE' }}
-          ======================================================================
-          ⚙️ PERFORMANCE OPTIMIZATION RESULTS:
-            ↳ BEFORE STAGE 2 DEPLOYMENT TRACK: {{ lynis_pre_score_final }} points
-            ↳ AFTER ACTIVE COMPLIANCE FIXES  : {{ lynis_post_score_final }} points
-            ↳ REAL-TIME HARDENING GAIN DELTA  : +{{ stage2_point_delta }} points achieved!
-          ======================================================================
+            ↳ BOOTLOADER PASS-GATE SECURITY    : {{ 'CRYPTOGRAPHICALLY LOCKED via PBKDF2' if (boot_password_is_protected | bool or not compliance_track_level_3 | bool) else 'TRUSTED VIA STAGE 1 INFRASTRUCTURE' }}
+          =======================================================================================
+          ⚙️ LYNIS SECURITY AUDIT PERFORMANCE OPTIMIZATION RESULTS:
+            ↳ BEFORE STAGE 2 DEPLOYMENT SCORE  : [ {{ lynis_pre_score_final }} points ]
+            ↳ AFTER ACTIVE COMPLIANCE FIXES    : [ {{ lynis_post_score_final }} points ]
+            ↳ REAL-TIME HARDENING GAIN DELTA   : [ +{{ stage2_point_delta }} points achieved! ]
+          =======================================================================================
           🚨 🚨 CRITICAL AUTHENTICATION REMINDER INTERFACES: CREDENTIAL POSTURE SHIFT 🚨 🚨
-          ======================================================================
+          =======================================================================================
           ⚡ CAUTION: 65,536-ROUND CRYPTOGRAPHIC STRETCHING ENGINE FULLY DEPLOYED
           
           To prevent catastrophic user account lockouts, you MUST force an immediate
@@ -1463,9 +1523,9 @@
           require fresh hashes to map system-auth parameters correctly on your next 
           interactive session initialization loop.
           
-          ➡️  1. Enforce Regular Account Hash Shift : Execute 'passwd'
-          ➡️  2. Enforce Administrative Root Hash Shift: Execute 'sudo passwd root'
-          ======================================================================
+          ➡️  1. Enforce Regular Account Hash Shift  : Execute 'passwd'
+          ➡️  2. Enforce Administrative Root Hash Shift : Execute 'sudo passwd root'
+          =======================================================================================
           💎 INFRASTRUCTURE COMPLIANCE FOOTPRINT:
           {% if failsafe_runtime_only_mode | bool %}
             NOTICE: This endpoint is certified under Level 0. Runtime isolation, 
@@ -1483,7 +1543,7 @@
             NOTICE: Level 2 Compliance achieved. Hardening parameters are 
             fully locked onto standalone secure block layout.
           {% endif %}
-          ======================================================================
+          =======================================================================================
 
   handlers:
     - name: "Trigger Active System Kernel Flush"
@@ -1495,4 +1555,4 @@
 
     - name: "Reload Firewalld Configuration"
       ansible.builtin.command: "firewall-cmd --reload"
-      
+
