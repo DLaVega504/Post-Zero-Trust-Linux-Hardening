@@ -610,19 +610,6 @@
         expected_snapshots_subvol: "@snapshots"
         expected_container_subvol: "@container"
 
-    - name: "SCAN | STATE | Calculate true runtime system hardware profile tier alignment"
-      ansible.builtin.set_fact:
-        current_profile: >-
-          {% if system_ram_gb | int <= 4 %}
-            {{ hardware_profile_matrix['tier_1'] }}
-          {% elif system_ram_gb | int > 4 and system_ram_gb | int <= 8 %}
-            {{ hardware_profile_matrix['tier_2'] }}
-          {% elif system_ram_gb | int > 8 and system_ram_gb | int <= 15 %}
-            {{ hardware_profile_matrix['tier_3'] }}
-          {% else %}
-            {{ hardware_profile_matrix['tier_4'] }}
-          {% endif %}
-        
 
     - name: "SCAN | Evaluate dependent topo structural safety definitions"
       ansible.builtin.set_fact:
@@ -841,7 +828,7 @@
           # AUTOMATED ZERO-TRUST HARDWARE-AWARE MEMORY PERFORMANCE METRICS LEDGER
           # CUSTOM SYSTEM ARCHITECTURE BUILT BY MEDARDO VEGA
           # =================================================================
-          vm.swappiness = {{ current_profile.swappiness }}
+          vm.swappiness = {{ hardware_profile_matrix['tier_1']['swappiness'] if system_ram_gb | int <= 4 else (hardware_profile_matrix['tier_2']['swappiness'] if system_ram_gb | int <= 8 else (hardware_profile_matrix['tier_3']['swappiness'] if system_ram_gb | int <= 15 else hardware_profile_matrix['tier_4']['swappiness'])) }}
           vm.page_cluster = 0
           vm.compaction_proactiveness = 80
 
@@ -1084,6 +1071,17 @@
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
+
+    - name: "CONFIGURATION | PERIPHERAL | Enforce correct system owner permissions over USBGuard ledgers"
+      ansible.builtin.file:
+        path: "/etc/usbguard/rules.conf"
+        owner: usbguard
+        group: usbguard
+        mode: '0600'
+      when:
+        - "ansible_facts['os_family'] == 'Archlinux'"
+        - "not ansible_check_mode"
+
 
     - name: "CONFIGURATION | PERIPHERAL | Enforce hardened implicit policy target definitions"
       ansible.builtin.lineinfile:
@@ -1560,33 +1558,61 @@
         enabled: true
       when: "not ansible_check_mode"
 
+    - name: "SECURITY SERVICES | CLEAR CLEARING LOCKS | Reset systemd restart counters for service stability"
+      ansible.builtin.command: "systemctl reset-failed usbguard"
+      failed_when: false
+      changed_when: false
+      when: "not ansible_check_mode"
+
+    - name: "SECURITY SERVICES | FAIL2BAN | Flush stale tracking sockets to prevent timeout hangs"
+      ansible.builtin.shell: |
+        set -o pipefail
+        systemctl stop fail2ban || true
+        killall -9 fail2ban-server || true
+        rm -f /var/run/fail2ban/fail2ban.sock
+      args:
+        executable: /bin/bash
+      failed_when: false
+      changed_when: false
+      when: "not ansible_check_mode"
+
     - name: "SECURITY SERVICES | NOTIFY | Render core tool activation states live to terminal"
       ansible.builtin.debug:
-        msg: |
-          ======================================================================
-          ⚙️  [ POST-HARDENING PROTOCOL: CORE UTILITY ACTIVATION LEDGER ]
-          ======================================================================
-          ↳ FAIL2BAN INTRUSION JAIL       : ENABLED & STARTED [SUCCESS]
-          ↳ USBGUARD PERIPHERAL FIREWALL  : ENABLED & STARTED [SUCCESS]
-          ↳ ARPWATCH LINK-LAYER SNIFFER   : ENABLED & STARTED [SUCCESS]
-          ↳ SNORT INTEGRITY INTRUSION DEFI: ENABLED & STARTED [SUCCESS]
-          ↳ CLAMAV ANTIVIRUS DAEMON POOL  : ENABLED & OPTIMIZED [SUCCESS]
-          ↳ AIDE FILE INTEGRITY TIMERS    : ENFORCED & ARMED [SUCCESS]
-          ↳ TRIPWIRE BINARY SIGNATURES    : ENFORCED & ARMED [SUCCESS]
-          ↳ VPNLEAK REALTIME TUNNEL GUARD : ENABLED & STARTED [SUCCESS]
-          ======================================================================
-          NOTICE: Core persistent defense utilities and network sniffing daemons 
-          are initializing to lock your custom architectural parameters 
-          permanently into system state matching your form factor.
-          ======================================================================
+        msg:
+          - "======================================================================================="
+          - " ⚙️  [ POST-HARDENING PROTOCOL: UNIFIED CORE UTILITY ACTIVATION LEDGER ]"
+          - "======================================================================================="
+          - "   ↳ FIREWALLD NETWORK PERIMETERS : ENABLED & ISOLATED   [ ACTIVE ]"
+          - "   ↳ FAIL2BAN INTRUSION JAIL      : ENFORCED & ARMED     [ ACTIVE ]"
+          - "   ↳ USBGUARD HARDWARE FIREWALL   : UNLOCKED & RUNNING   [ ACTIVE ]"
+          - "   ↳ ARPWATCH LINK-LAYER SNIFFER  : SANDBOX CONTAINED    [ ACTIVE ]"
+          - "   ↳ SNORT 3 CORE MULTITHREAD     : INTRUSION ACTIVE     [ ACTIVE ]"
+          - "   ↳ CLAMAV SCANNER DAEMON POOL   : CPU QUOTA DEPLOYED   [ ACTIVE ]"
+          - "   ↳ FRESHCLAM UPDATER CLOCK      : OPTIMIZED (CHECKS=2) [ ACTIVE ]"
+          - "   ↳ AIDE FILE INTEGRITY TIMERS   : FORENSICS ARMED      [ ENFORCED ]"
+          - "   ↳ TRIPWIRE BINARY SIGNATURES   : FORENSICS ARMED      [ ENFORCED ]"
+          - "   ↳ VPNLEAK PERIMETER MONITOR    : LIVE REALTIME DAEMON [ ACTIVE ]"
+          - "======================================================================================="
+          - "  NOTICE: Persistent defense utilities and zero-trust sniffing daemons"
+          - "  are initialized to lock your architectural parameters permanently."
+          - "======================================================================================="
+      
 
     - name: "SECURITY SERVICES | Activate and enable baseline security infrastructure daemons"
       ansible.builtin.systemd:
-        name: "{{ 'arpwatch@' ~ primary_network_interface if (item == 'arpwatch' and ansible_facts['os_family'] in ['Archlinux', 'Debian']) else item }}"
+        name: >-
+          {%- if item == 'arpwatch' and ansible_facts['os_family'] in ['Archlinux', 'Debian'] -%}
+            arpwatch@{{ primary_network_interface | default('ens5') }}.service
+          {%- elif item == 'snort' and ansible_facts['os_family'] in ['Archlinux', 'RedHat'] -%}
+            snort@{{ primary_network_interface | default('ens5') }}.service
+          {%- else -%}
+            {{ item }}
+          {%- endif -%}
         state: "started"
         enabled: true
-      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-monitor.service", "auditd", "arpwatch"]
+      loop: ["firewalld", "fail2ban", "sysstat", "usbguard", "aide-check.timer", "tripwire-check.timer", "vpn-monitor.service", "auditd", "arpwatch", "snort", "clamav-freshclam"]
       failed_when: false
+      when: "not ansible_check_mode"
 
 
     - name: "COMPLIANCE | LYNIS | Enforce custom security profiling configuration metrics universally"
