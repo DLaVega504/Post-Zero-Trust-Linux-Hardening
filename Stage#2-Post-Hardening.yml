@@ -827,10 +827,12 @@
       loop:
         - "/etc/sysctl.d/99-swappiness.conf"
         - "/etc/sysctl.d/50-memory-tuning.conf"
+
 # =============================================================================
 # BLOCK 25: HARDWARE-AWARE SYSCTL TUNING INJECTIONS
 # DESCRIPTION: Drops hardware-aware kernel performance controls customized to mechanical, hypervisor, or solid state storage configurations.
 # =============================================================================
+
     - name: "HARDENING | MEMORY MAPS | Compile optimized dynamic sysctl hardware profile"
       ansible.builtin.copy:
         dest: "/etc/sysctl.d/99-memory-tunning.conf"
@@ -839,16 +841,16 @@
           # AUTOMATED ZERO-TRUST HARDWARE-AWARE MEMORY PERFORMANCE METRICS LEDGER
           # CUSTOM SYSTEM ARCHITECTURE BUILT BY MEDARDO VEGA
           # =================================================================
-          vm.swappiness = {{ target_swappiness }}
+          vm.swappiness = {{ current_profile.swappiness }}
           vm.page_cluster = 0
           vm.compaction_proactiveness = 80
 
           {% if is_mechanical_drive | bool %}
           # HARDCODED PLATTEN DRIVES PROTECTIVE PARAMETERS
-          vm.dirty_background_bytes = {{ hdd_matrix_blueprint[target_swappiness]['bg_bytes'] | default(67108864) }}
-          vm.dirty_bytes = {{ hdd_matrix_blueprint[target_swappiness]['dirty_bytes'] | default(268435456) }}
-          vm.watermark_scale_factor = {{ hdd_matrix_blueprint[target_swappiness]['scale'] | default(125) }}
-          vm.vfs_cache_pressure = {{ hdd_matrix_blueprint[target_swappiness]['pressure'] | default(50) }}
+          vm.dirty_background_bytes = 67108864
+          vm.dirty_bytes = 268435456
+          vm.watermark_scale_factor = 125
+          vm.vfs_cache_pressure = 50
           {% elif is_virtual_machine | bool %}
           # HYPERVISOR AGGRESSIVE GUEST DOUBLE-CACHING BYPASS FLUSH
           vm.dirty_background_ratio = 5
@@ -856,10 +858,10 @@
           vm.vfs_cache_pressure = 500
           {% else %}
           # FLASH CELLS SOLID STATE DISK RATIOS HIGH THROUGHPUT
-          vm.dirty_background_ratio = {{ ssd_matrix_blueprint[target_swappiness]['bg_ratio'] | default(10) }}
-          vm.dirty_ratio = {{ ssd_matrix_blueprint[target_swappiness]['ratio'] | default(20) }}
-          vm.watermark_scale_factor = {{ ssd_matrix_blueprint[target_swappiness]['scale'] | default(10) }}
-          vm.vfs_cache_pressure = {{ ssd_matrix_blueprint[target_swappiness]['pressure'] | default(100) }}
+          vm.dirty_background_ratio = 10
+          vm.dirty_ratio = 20
+          vm.watermark_scale_factor = 10
+          vm.vfs_cache_pressure = 100
           {% endif %}
         mode: '0644'
         owner: root
