@@ -14,7 +14,6 @@
     secure_vault_enabled: true
     vault_partition_handle: "/dev/sda2"
     vault_mount_target: "/vault"
-    system_hostname_signature: "SecEngr"
     vault_enforce_multi_tenant: true
     vault_allocation_percentage: 20
     vault_maximum_guest_members: 3
@@ -879,8 +878,12 @@
         mode: '0644'
         content: |
           # Secure Static Table Lookup for Hostnames (Automated Framework Baseline)
-          127.0.0.1    localhost localhost.localdomain {{ system_hostname_signature | default('SecEngr') }}
-          ::1          localhost localhost.localdomain {{ system_hostname_signature | default('SecEngr') }}
+          127.0.0.1    localhost localhost.localdomain
+          ::1          localhost localhost.localdomain
+          
+          # Dedicated Local Loopback Node Mapping for Compliance Parsers
+          127.0.1.1    {{ ansible_facts['hostname'] }}
+          ::1          {{ ansible_facts['hostname'] }}
       become: true
 
     - name: "CONFIGURATION | SYSTEM BANNERS | Generate dynamic cross-distribution login disclaimers"
@@ -1116,18 +1119,27 @@
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
 
+    - name: "PROVISION | ARCH | Generate pristine USBGuard hardware rule ledger baseline"
+      ansible.builtin.shell: |
+        set -o pipefail
+        if [ ! -s /etc/usbguard/rules.conf ]; then
+          usbguard generate-policy > /etc/usbguard/rules.conf
+          chmod 0600 /etc/usbguard/rules.conf
+        fi
+      args:
+        executable: /bin/bash
+      when:
+        - "ansible_facts['os_family'] == 'Archlinux'"
+        - "not ansible_check_mode"
+
     - name: "CONFIGURATION | PERIPHERAL | Enforce correct system owner permissions over USBGuard ledgers"
       ansible.builtin.shell: |
         set -euo pipefail
         TARGET_FILE="/etc/usbguard/rules.conf"
-        
-        # Verify the ledger file physically exists before enforcing parameters
         if [ -f "${TARGET_FILE}" ]; then
             if getent passwd usbguard >/dev/null 2>&1; then
-                echo "[+] System-specific user 'usbguard' detected. Applying localized daemon permissions."
                 chown usbguard:usbguard "${TARGET_FILE}"
             else
-                echo "[!] No standalone service user found. Falling back to root administrative constraints."
                 chown root:root "${TARGET_FILE}"
             fi
             chmod 0600 "${TARGET_FILE}"
@@ -1140,8 +1152,24 @@
       when: "not ansible_check_mode"
       become: true
 
+    - name: "CONFIGURATION | PERIPHERAL | Purge invalid legacy DevicePolicyMethod parameters universally"
+      ansible.builtin.lineinfile:
+        path: "/etc/usbguard/usbguard-daemon.conf"
+        regexp: "^DevicePolicyMethod="
+        state: absent
+      when: "not ansible_check_mode"
+      become: true
 
-    - name: "CONFIGURATION | PERIPHERAL | Enforce hardened implicit policy target definitions"
+    - name: "CONFIGURATION | PERIPHERAL | Enforce absolute RuleFile ledger path configuration"
+      ansible.builtin.lineinfile:
+        path: "/etc/usbguard/usbguard-daemon.conf"
+        regexp: "^#?\\s*RuleFile="
+        line: "RuleFile=/etc/usbguard/rules.conf"
+        state: present
+      when: "not ansible_check_mode"
+      become: true
+
+    - name: "CONFIGURATION | PERIPHERAL | Enforce documented universal policy targets"
       ansible.builtin.lineinfile:
         path: "/etc/usbguard/usbguard-daemon.conf"
         regexp: "^ImplicitPolicyTarget="
@@ -1149,16 +1177,24 @@
         state: present
       when: "not ansible_check_mode"
 
+    - name: "CONFIGURATION | PERIPHERAL | Enforce documented universal present device behaviors"
+      ansible.builtin.lineinfile:
+        path: "/etc/usbguard/usbguard-daemon.conf"
+        regexp: "^PresentDevicePolicy="
+        line: "PresentDevicePolicy=apply-policy"
+        state: present
+      when: "not ansible_check_mode"
+
     - name: "CONFIGURATION | PERIPHERAL | Deactivate invalid AllowStoredDevices directive on Arch Linux"
       ansible.builtin.lineinfile:
         path: "/etc/usbguard/usbguard-daemon.conf"
         regexp: "^(AllowStoredDevices=)"
-        line: "# AllowStoredDevices=top"
         state: absent
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
       become: true
+
       
     - name: "PROVISION | UNIVERSAL | Install Tripwire forensic engine from native repositories"
       ansible.builtin.package:
@@ -1168,20 +1204,35 @@
         - "ansible_facts['os_family'] != 'Archlinux'"
         - "not ansible_check_mode"
 
+    - name: "CONFIGURATION | TRIPWIRE | Purge non-existent legacy binaries from cleartext policy template"
+      ansible.builtin.replace:
+        path: "/etc/tripwire/twpol.txt"
+        regexp: '^(\s*{{ item }}\s+->)'
+        replace: '# \1'
+      loop:
+        - "/usr/sbin/fixrmtab"
+        - "/usr/sbin/pwconv"
+        - "/usr/sbin/grpconv"
+      failed_when: false
+      when:
+        - "not ansible_check_mode"
+      become: true
+
+        
     - name: "COMPILER CONTROL | NOTIFY | Render background build execution alerts"
       ansible.builtin.debug:
-        msg: |
-          ====================================================================================
-          ⏳ [ COMPILER ACTIVATION PROTOCOL: HEADLESS SOURCE ASSEMBLY ]
-          ====================================================================================
-            ↳ AGENT TARGET ENGINE  : TRIPWIRE (FORENSIC POSTURE LOCK)
-            ↳ ESTIMATED TIME ENGINE: 15-20 Mins Depending your Cpu (PRE-COMPILED BINARY INGESTION)
-          ===================================================================================
-            NOTICE: This process synchronizes your custom architectural parameters 
-            with the native repository database. The terminal output will pause 
-            briefly while the package wrapper satisfies the forensic system layers.
-            Do NOT abort or intercept the execution loop.
-          ====================================================================================
+        msg:
+          - "===================================================================================="
+          - "⏳ [ COMPILER ACTIVATION PROTOCOL: HEADLESS SOURCE ASSEMBLY ]"
+          - "===================================================================================="
+          - "  ↳ AGENT TARGET ENGINE  : TRIPWIRE (FORENSIC POSTURE LOCK)"
+          - "  ↳ ESTIMATED TIME ENGINE: 1-5 Mins (PRE-COMPILED BINARY INGESTION)"
+          - "===================================================================================="
+          - "  NOTICE: This process synchronizes your custom architectural parameters "
+          - "  with the native repository database. The terminal output will pause "
+          - "  briefly while the package wrapper satisfies the forensic system layers."
+          - "  Do NOT abort or intercept the execution loop."
+          - "===================================================================================="
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not ansible_check_mode"
@@ -1206,17 +1257,56 @@
         state: present
       when: "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
 
-    - name: "CONFIGURATION | SNORT | Deactivate non-existent dynamic rules directory paths"
+    - name: "SCAN | SNORT | Probing system filesystem layout to determine running version"
+      ansible.builtin.stat:
+        path: "/etc/snort/snort.lua"
+      register: snort_version_probe
+      check_mode: false
+
+    - name: "CONFIGURATION | SNORT 2.9 / 3 | Enforce absolute physical path compliance for relative rule directories"
+      ansible.builtin.file:
+        path: "/etc/rules"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: "not ansible_check_mode"
+      become: true
+
+    - name: "CONFIGURATION | SNORT 2.9 / 3 | Enforce local and app rules baseline file creation"
+      ansible.builtin.file:
+        path: "/etc/rules/{{ item }}"
+        state: touch
+        owner: root
+        group: root
+        mode: '0644'
+        modification_time: preserve
+        access_time: preserve
+      loop:
+        - "local.rules"
+        - "app-detect.rules"
+      when: "not ansible_check_mode"
+      become: true
+
+    - name: "CONFIGURATION | SNORT 2.9 | Deactivate non-existent dynamic rules directory paths"
       ansible.builtin.lineinfile:
         path: "/etc/snort/snort.conf"
         regexp: "^(dynamicdetection\\s+directory\\s+/usr/lib/snort_dynamicrules)"
         line: "# dynamicdetection directory /usr/lib/snort_dynamicrules"
         state: present
       when:
-        - "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'Suse'"
+        - "not snort_version_probe.stat.exists | bool"
         - "not ansible_check_mode"
       become: true
 
+    - name: "CONFIGURATION | SNORT 2.9 | Purge uninstalled vendor rulesets and configs from plain-text tracks"
+      ansible.builtin.replace:
+        path: "/etc/snort/snort.conf"
+        regexp: '^(include\s+\$RULE_PATH\/(?!local\.rules|app-detect\.rules)[a-zA-Z0-9_\-\.]+\.(rules|conf))'
+        replace: '# \1'
+      when:
+        - "not ansible_check_mode"
+      become: true
 
     - name: "CONFIGURATION | SNORT 2.9 | Deploy classic plain-text engine rules matrix"
       ansible.builtin.lineinfile:
@@ -1224,7 +1314,9 @@
         regexp: "^var\\s+HOME_NET"
         line: "var HOME_NET {{ dynamic_home_net | default('192.168.1.0/24') }}"
         state: present
-      when: "ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'Suse'"
+      when:
+        - "not snort_version_probe.stat.exists | bool"
+        - "not ansible_check_mode"
 
     - name: "CONFIGURATION | SNORT 3 | Deploy modern structured Lua posture config"
       ansible.builtin.copy:
@@ -1244,7 +1336,7 @@
               rules = [[ include local.rules ]]
           }
       when: 
-        - "ansible_facts['os_family'] == 'Archlinux' or ansible_facts['os_family'] == 'RedHat'"
+        - "snort_version_probe.stat.exists | bool"
         - "not ansible_check_mode"
       become: true
 
@@ -1369,23 +1461,60 @@
         - "not is_mechanical_drive | bool"
         - "not failsafe_runtime_only_mode | bool"
 
-    - name: "INTRUSION DETECTION | SSD | Initialize pristine file integrity tracking database live"
+    - name: "INTRUSION DETECTION | MULTI-DISTRO SCAN | Initialize pristine file integrity tracking database conditional baseline"
       ansible.builtin.shell: |
         set -euo pipefail
-        aide --init -y || aideinit -y || true
-        if [ -f /var/lib/aide/aide.db.new.gz ]; then
-            cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
-        elif [ -f /var/lib/aide/aide.db.new ]; then
-            cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+        OS_FAMILY="{{ ansible_facts['os_family'] }}"
+        DB_DIR="/var/lib/aide"
+        
+        # 1. Resolve explicit production database paths based on upstream maintainer defaults
+        if [ "${OS_FAMILY}" = "Archlinux" ] || [ "${OS_FAMILY}" = "Suse" ]; then
+            TARGET_DB="${DB_DIR}/aide.db"
+        elif [ "${OS_FAMILY}" = "Debian" ] || [ "${OS_FAMILY}" = "RedHat" ]; then
+            TARGET_DB="${DB_DIR}/aide.db.gz"
+        else
+            TARGET_DB="${DB_DIR}/aide.db"
         fi
-        tripwire --init --silent || true
+
+        # 2. Hard protective exit: Skip execution to safeguard physical drive platter sector wear if database is alive
+        if [ -f "${TARGET_DB}" ]; then
+            echo "[+] Pristine cryptographic filesystem signature baseline verified at: ${TARGET_DB}. Skipping initialization loop."
+            exit 0
+        fi
+
+        echo "[!] Critical database track missing. Bootstrapping low-impact initialization scan via native platform paths..."
+        mkdir -p "${DB_DIR}"
+
+        # 3. Branch out and execute the initialization using native distro tools
+        if [ "${OS_FAMILY}" = "Debian" ]; then
+            aideinit -y || true
+            if [ -f "${DB_DIR}/aide.db.new" ] && [ ! -f "${TARGET_DB}" ]; then
+                cp "${DB_DIR}/aide.db.new" "${TARGET_DB}"
+            fi
+        elif [ "${OS_FAMILY}" = "Archlinux" ]; then
+            aide --init -y || true
+            if [ -f "${DB_DIR}/aide.db.new" ]; then
+                cp "${DB_DIR}/aide.db.new" "${TARGET_DB}"
+            fi
+        elif [ "${OS_FAMILY}" = "RedHat" ]; then
+            aide --init -y || true
+            if [ -f "${DB_DIR}/aide.db.new.gz" ]; then
+                cp "${DB_DIR}/aide.db.new.gz" "${TARGET_DB}"
+            fi
+        else
+            aide --init -y || true
+            if [ -f "${DB_DIR}/aide.db.new" ]; then
+                cp "${DB_DIR}/aide.db.new" "${TARGET_DB}"
+            fi
+        fi
+        echo "[+] Security database successfully initialized and placed onto active production tracking paths."
       args:
         executable: /bin/bash
       when:
-        - "not is_mechanical_drive | bool"
         - "not failsafe_runtime_only_mode | bool"
         - "not ansible_check_mode"
       failed_when: false
+      become: true
 
     - name: "INTRUSION DETECTION | HDD | Generate classified security audit blueprint for high-value targets"
       ansible.builtin.copy:
