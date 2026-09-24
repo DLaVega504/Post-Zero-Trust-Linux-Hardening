@@ -1156,12 +1156,12 @@
         - "firewall_conf_fix.changed | default(false)"
 
 # =============================================================================
-# BLOCK 29: UNIVERSAL PROTECTION SUITE GATES & COMPLIANCE REMEDIATIONS
-# DESCRIPTION: Satisfies host packages, builds local rules, fixes daemon loops,
-#              and handles cross-distribution key matching for zero-trust.
+# BLOCK 29: ENTERPRISE PERIPHERAL LOCKDOWNS & USER PRIVILEGE GATES
+# DESCRIPTION: Satisfies system packaging, generates clean hardware whitelists,
+#              and deploys an optimized, error-free zero-trust configuration matrix.
 # =============================================================================
 
-    - name: "SECURITY SERVICES | RECOVERY | Clear systemd error cache to lift startup limits"
+    - name: "SECURITY SERVICES | RECOVERY | Flush systemd service failure caches"
       ansible.builtin.command: "systemctl reset-failed usbguard.service clamd.service snort.service 2>/dev/null"
       failed_when: false
       changed_when: false
@@ -1173,50 +1173,6 @@
         name: "{{ distro_matrix[ansible_facts['os_family']]['core_packages'] }}"
         state: present
       when: "not ansible_check_mode"
-
-    - name: "PROVISION | ARCH | Generate pristine USBGuard hardware rule ledger baseline"
-      ansible.builtin.shell: |
-        set -o pipefail
-        if [ ! -s /etc/usbguard/rules.conf ]; then
-          usbguard generate-policy > /etc/usbguard/rules.conf
-        fi
-      args:
-        executable: /bin/bash
-      when:
-        - "ansible_facts['os_family'] == 'Archlinux'"
-        - "not ansible_check_mode"
-
-    - name: "CONFIGURATION | PERIPHERAL | Enforce safe operational ownership over rules files"
-      ansible.builtin.file:
-        path: "/etc/usbguard/rules.conf"
-        owner: "{{ 'usbguard' if ansible_facts['os_family'] == 'Debian' else 'root' }}"
-        group: "{{ 'usbguard' if ansible_facts['os_family'] == 'Debian' else 'root' }}"
-        mode: '0600'
-      failed_when: false
-      become: true
-      when: "not ansible_check_mode"
-
-    - name: "CONFIGURATION | PERIPHERAL | Enforce modern zero-trust ImplicitPolicyTarget configuration parameter"
-      ansible.builtin.lineinfile:
-        path: "/etc/usbguard/usbguard-daemon.conf"
-        regexp: '^\s*ImplicitPolicyTarget\s*='
-        line: "ImplicitPolicyTarget=block"
-        state: present
-      become: true
-      when: 
-        - "ansible_facts['os_family'] in ['Archlinux', 'RedHat', 'Suse']"
-        - "not ansible_check_mode"
-
-    - name: "CONFIGURATION | PERIPHERAL | Enforce legacy zero-trust DevicePolicyMethod parameter for older platforms"
-      ansible.builtin.lineinfile:
-        path: "/etc/usbguard/usbguard-daemon.conf"
-        regexp: '^\s*DevicePolicyMethod\s*='
-        line: "DevicePolicyMethod=block"
-        state: present
-      become: true
-      when: 
-        - "ansible_facts['os_family'] == 'Debian'"
-        - "not ansible_check_mode"
 
     - name: "PROVISION | UNIVERSAL | Install Tripwire forensic engine from native repositories"
       ansible.builtin.package:
@@ -1245,18 +1201,8 @@
 # DESCRIPTION: Natively purges legacy package layers, satisfies modern libraries, and aligns filesystem permissions for zero-trust daemons.
 # =============================================================================
 
-    - name: "SECURITY SERVICES | RECOVERY | Reset systemd failure bounds to clear persistent USBGuard lockouts"
+    - name: "SECURITY SERVICES | RECOVERY | Reset systemd execution lock metrics"
       ansible.builtin.command: "systemctl reset-failed usbguard.service"
-      failed_when: false
-      changed_when: false
-      when: "not ansible_check_mode"
-      become: true
-
-    - name: "SECURITY SERVICES | RECOVERY | Clear cached distribution systemd failure locks programmatically"
-      ansible.builtin.shell: |
-        systemctl reset-failed usbguard.service aide-check.service tripwire-check.service 2>/dev/null || true
-        systemctl reset-failed snort@{{ primary_network_interface | default('wls1') if primary_network_interface | default('') | trim | length > 0 else 'wls1' }}.service 2>/dev/null || true
-        systemctl daemon-reload
       failed_when: false
       changed_when: false
       when: "not ansible_check_mode"
@@ -1272,66 +1218,75 @@
         - "not ansible_check_mode"
       become: true
 
-    - name: "PROVISION | ARCH | Generate pristine USBGuard hardware rule ledger baseline"
+    - name: "USBGUARD | PRIVILEGE | Scrape target node group database paths natively"
       ansible.builtin.shell: |
         set -o pipefail
-        if [ ! -s /etc/usbguard/rules.conf ]; then
-          usbguard generate-policy > /etc/usbguard/rules.conf
-          chmod 0600 /etc/usbguard/rules.conf
-        fi
+        getent group {{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }} | cut -d: -f4 | tr ',' ' '
       args:
         executable: /bin/bash
-      when:
-        - "ansible_facts['os_family'] == 'Archlinux'"
-        - "not ansible_check_mode"
+      register: live_os_group_administrators
+      changed_when: false
 
-    - name: "CONFIGURATION | PERIPHERAL | Enforce correct system owner permissions over USBGuard ledgers"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        TARGET_FILE="/etc/usbguard/rules.conf"
-        if [ -f "${TARGET_FILE}" ]; then
-            if [ "{{ ansible_facts['os_family'] }}" = "Debian" ] && getent passwd usbguard >/dev/null 2>&1; then
-                chown usbguard:usbguard "${TARGET_FILE}"
-            else
-                chown root:root "${TARGET_FILE}"
-            fi
-            chmod 0600 "${TARGET_FILE}"
-        else
-            echo "[-] Error: USBGuard ledger rules file not found at ${TARGET_FILE}"
-            exit 1
-        fi
-      args:
-        executable: /bin/bash
-      when: "not ansible_check_mode"
+    - name: "USBGUARD | PRIVILEGE | Compile dynamic error-free user string with zero token duplication"
+      ansible.builtin.set_fact:
+        sanitized_ipc_users: >-
+          {%- set list_accumulator = ['root', ansible_env.SUDO_USER | default(ansible_user_id)] -%}
+          {%- if live_os_group_administrators.stdout | trim | length > 0 -%}
+            {%- set list_accumulator = list_accumulator + (live_os_group_administrators.stdout.split()) -%}
+          {%- endif -%}
+          {{ list_accumulator | unique | join(',') }}
+
+    - name: "USBGUARD | RECOVERY | Temporarily open daemon gates to safely read active equipment lines"
+      ansible.builtin.copy:
+        dest: "/etc/usbguard/usbguard-daemon.conf"
+        content: |
+          ImplicitPolicyTarget=allow
+          PresentDevicePolicy=allow
+          InsertedDevicePolicy=block
+          IPCAllowedGroups={{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }}
+          IPCAllowedUsers=root,{{ ansible_env.SUDO_USER | default(ansible_user_id) }}
+          RuleFile=/etc/usbguard/rules.conf
+        mode: '0600'
       become: true
 
-    - name: "CONFIGURATION | PERIPHERAL | Cleanly sanitize modern platforms from invalid or obsolete key formats"
-      ansible.builtin.lineinfile:
-        path: "/etc/usbguard/usbguard-daemon.conf"
-        regexp: '^\s*DevicePolicyMethod\s*='
-        state: absent
+    - name: "USBGUARD | SERVICE | Bounce daemon headlessly to open peripheral mapping streams"
+      ansible.builtin.systemd:
+        name: usbguard.service
+        state: restarted
       become: true
-      when: 
-        - "ansible_facts['os_family'] in ['Archlinux', 'RedHat', 'Suse']"
-        - "not ansible_check_mode"
 
-    - name: "CONFIGURATION | PERIPHERAL | Ensure PresentDevicePolicy uses zero-trust block configurations"
-      ansible.builtin.lineinfile:
-        path: "/etc/usbguard/usbguard-daemon.conf"
-        regexp: '^\s*PresentDevicePolicy\s*='
-        line: "PresentDevicePolicy=block"
-        state: present
+    - name: "USBGUARD | POLICY | Forcefully generate true active hardware whitelist snapshot"
+      ansible.builtin.shell: "usbguard generate-policy > /etc/usbguard/rules.conf"
       become: true
       when: "not ansible_check_mode"
 
-    - name: "CONFIGURATION | PERIPHERAL | Ensure InsertedDevicePolicy uses zero-trust block configurations"
-      ansible.builtin.lineinfile:
-        path: "/etc/usbguard/usbguard-daemon.conf"
-        regexp: '^\s*InsertedDevicePolicy\s*='
-        line: "InsertedDevicePolicy=block"
-        state: present
+    - name: "CONFIGURATION | PERIPHERAL | Enforce ironclad system owner permissions over rules"
+      ansible.builtin.file:
+        path: "/etc/usbguard/rules.conf"
+        owner: root
+        group: root
+        mode: '0600'
       become: true
-      when: "not ansible_check_mode"
+
+    - name: "CONFIGURATION | PERIPHERAL | Deploy absolute, pristine production configuration matrix"
+      ansible.builtin.copy:
+        dest: "/etc/usbguard/usbguard-daemon.conf"
+        content: |
+          ImplicitPolicyTarget=block
+          PresentControllerPolicy=keep
+          InsertedDevicePolicy=block
+          RestoreControllerDeviceState=false
+          AuditBackend=FileAudit
+          AuditFilePath=/var/log/usbguard/usbguard-audit.log
+          IPCAllowedGroups={{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }},secops
+          IPCAllowedUsers={{ sanitized_ipc_users | trim }}
+          RuleFile=/etc/usbguard/rules.conf
+          PresentDevicePolicy=block
+        mode: '0600'
+        owner: root
+        group: root
+      become: true
+      register: enterprise_config_lock
 
     - name: "CONFIGURATION | TRIPWIRE | Purge non-existent legacy binaries from cleartext policy template"
       ansible.builtin.replace:
@@ -1366,9 +1321,9 @@
       when: "not ansible_check_mode"
       become: true
 
-
+      
 # =============================================================================
-# BLOCK 30B: SNORT DETECTIONS GEOMETRY & ENGINE CONFIGURATION
+# BLOCK 30A: SNORT DETECTIONS GEOMETRY & ENGINE CONFIGURATION
 # DESCRIPTION: Automates physical rule placement mapping and injects cross-distro Lua frameworks.
 # =============================================================================
 
@@ -1470,7 +1425,7 @@
         - "snort_conf_fix.changed | default(false)"
 
 # =============================================================================
-# BLOCK 30C: CLAMAV SUBSYSTEM CONFIGURATION & RESOURCE SANDBOXING
+# BLOCK 30B: CLAMAV SUBSYSTEM CONFIGURATION & RESOURCE SANDBOXING
 # DESCRIPTION: Deploys dynamic CPU/memory sandboxing parameters and tunes database checks.
 # =============================================================================
 
@@ -1528,8 +1483,9 @@
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
 
+
 # =============================================================================
-# BLOCK 30D: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 1)
+# BLOCK 30C: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 1)
 # DESCRIPTION: Stages baseline tracking schemas for AIDE filesystems, deploys daily timers, and creates recovery notifications.
 # =============================================================================
 
@@ -1655,7 +1611,7 @@
       notify: "Reload Active Systemd Core"
 
 # =============================================================================
-# BLOCK 30E: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 2)
+# BLOCK 30D: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 2)
 # DESCRIPTION: Automates multi-distribution system state audits and captures clean database baselines cleanly.
 # =============================================================================
 
@@ -1716,7 +1672,7 @@
       failed_when: false
       become: true
 # =============================================================================
-# BLOCK 30F: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 3)
+# BLOCK 30E: FORENSIC FILE INTEGRITY SCHEMAS & ATTRIBUTES (PART 3)
 # DESCRIPTION: Establishes manual audit documentation rules, runtime reminder layers, and self-destruct routines for spinning platter media.
 # =============================================================================
 
@@ -1833,7 +1789,7 @@
         - "is_mechanical_drive | bool"
         - "not ansible_check_mode"
 # =============================================================================
-# BLOCK 30G: REAL-TIME NETWORK MONITORING DAEMONS
+# BLOCK 30F: REAL-TIME NETWORK MONITORING DAEMONS
 # DESCRIPTION: Deploys background network perimeter monitoring tools and initializes custom systemd services.
 # =============================================================================
 
@@ -1887,7 +1843,7 @@
       become: true
 
 # =============================================================================
-# BLOCK 30H: SYSTEM PAM AUTHENTICATION & KERNEL AUDIT MATRIX
+# BLOCK 30G: SYSTEM PAM AUTHENTICATION & KERNEL AUDIT MATRIX
 # DESCRIPTION: Enforces system-wide PAM stretching algorithms, account lockout rules, and un-falsifiable kernel loggers.
 # =============================================================================
 
