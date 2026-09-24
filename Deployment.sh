@@ -21,13 +21,13 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE}")" && pwd)"
 cd "${BASE_DIR}"
 
 # Clear out any stale legacy log receipts from previous testing passes
-rm -f stage2_hardening.log stage2_audit.log
+rm -f Stage#2-Hardening-Live-Run-Deployment.log Stage#2-Live-Run-Audit.log
 
 echo -e "\033[1;32m[+] Initiating Stage 2 Zero-Trust Hardening Core Engine...\033[0m"
 echo -e "\033[1;34m----------------------------------------------------------------------\033[0m"
 
 # Execute the core hardening deployment play and pipe output simultaneously to screen and file
-ansible-playbook -i hosts.ini Stage#2-Post-Hardening.yml | tee stage2_hardening.log
+ansible-playbook -i hosts.ini Stage#2-Post-Hardening.yml | tee Stage#2-Hardening-Live-Run-Deployment.log
 
 # Step 2: The 10-Second Visual Review Intermission Gate
 echo -e "\n\033[1;34m======================================================================\033[0m"
@@ -44,7 +44,7 @@ echo -e "\n\033[1;32m[+] Initiating Stage 2 Core Hardening Verification Audit Su
 echo -e "\033[1;34m----------------------------------------------------------------------\033[0m"
 
 # Execute the standalone verification audit suite and pipe output to screen and file
-ansible-playbook Stage#2-Auditing.yml | tee stage2_audit.log
+ansible-playbook Stage#2-Auditing.yml | tee Stage#2-Live-Run-Auditing.log
 
 # Step 3: The Cryptographic Dual-Receipt Integrity Gate Check
 echo -e "\n\033[1;34m======================================================================\033[0m"
