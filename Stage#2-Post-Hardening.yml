@@ -1800,8 +1800,21 @@
           while true; do
               ACTIVE_TRUSTED=$(firewall-cmd --zone=trusted --list-interfaces 2>/dev/null || echo "")
               ACTIVE_SOURCES=$(firewall-cmd --zone=trusted --list-sources 2>/dev/null || echo "")
+              
+              # First verification check: Is the VPN missing?
               if [[ ! "${ACTIVE_TRUSTED}" =~ (proton|pvpn|tun|wg) ]] && [[ ! "${ACTIVE_SOURCES}" =~ (proton|pvpn|tun|wg) ]]; then
-                  wall "[-] ZERO-TRUST ALERT: VPN Leakage Perimeter Breach Detected!" 2>/dev/null || true
+                  
+                  # ⏳ The 2-Second Debounce Window: Wait for routine firewall reloads to settle
+                  sleep 2
+                  
+                  # Second verification check: Re-probe the live hardware links
+                  RECHECK_TRUSTED=$(firewall-cmd --zone=trusted --list-interfaces 2>/dev/null || echo "")
+                  RECHECK_SOURCES=$(firewall-cmd --zone=trusted --list-sources 2>/dev/null || echo "")
+                  
+                  # Confirm if it's a genuine leak breach or just a transient configuration flush
+                  if [[ ! "${RECHECK_TRUSTED}" =~ (proton|pvpn|tun|wg) ]] && [[ ! "${RECHECK_SOURCES}" =~ (proton|pvpn|tun|wg) ]]; then
+                      wall "[-] ZERO-TRUST ALERT: VPN Leakage Perimeter Breach Detected! Physical interfaces remain trapped inside DROP zone containment blocks." 2>/dev/null || true
+                  fi
               fi
               sleep 5
           done
@@ -1989,15 +2002,6 @@
 # DESCRIPTION: Finalizes trusted tunnel parameters, builds snapper timeline configurations, and launches processes.
 # =======================================================================================
 
-    - name: "STAGE 1 KILLSWITCH | Force scanned physical interfaces into block zone permanently"
-      ansible.builtin.command: "firewall-cmd --permanent --zone=block --add-interface={{ item }}"
-      loop: "{{ active_network_interfaces.stdout.split(',') if active_network_interfaces.stdout is defined else [] }}"
-      become: true
-      when:
-        - "active_network_interfaces.stdout is defined and active_network_interfaces.stdout | length > 0"
-        - "hardware_form_factor in ['LAPTOP / PORTABLE WORKSTATION', 'DESKTOP / FIXED SECURE STATION']"
-        - "not ansible_check_mode"
-        - "not firewalld_native | bool"
 
     - name: "STAGE 2 & 3 KILLSWITCH | Permanently assign virtual tunnel interfaces to trusted zones"
       ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --add-interface={{ item }}"
@@ -2009,8 +2013,11 @@
         dest: "/etc/profile.d/firewall-killswitches.sh"
         content: |
           #!/usr/bin/env bash
+          # portaloff: Temporarily moves the physical card to trusted to clear captive portals
           alias portaloff="sudo firewall-cmd --zone=trusted --add-interface=\$(ls /sys/class/net | grep -E '^(wlan|wl|eth|en)' | head -n 1) && sudo firewall-cmd --reload"
-          alias portalon="sudo firewall-cmd --zone=block --add-interface=\$(ls /sys/class/net | grep -E '^(wlan|wl|eth|en)' | head -n 1) && sudo firewall-cmd --reload"
+          
+          # portalon: Enforces strict zero-trust protection by dropping the card back into the drop cage
+          alias portalon="sudo firewall-cmd --zone=drop --add-interface=\$(ls /sys/class/net | grep -E '^(wlan|wl|eth|en)' | head -n 1) && sudo firewall-cmd --reload"
         owner: "root"
         group: "root"
         mode: "0644"
@@ -2135,7 +2142,7 @@
           - "   ↳ 🛡️🔒 AIDE FILE INTEGRITY TIMERS   : FORENSICS ARMED      [ ENFORCED 🛡️ ]"
           - "   ↳ 🛡️🔒 TRIPWIRE BINARY SIGNATURES   : FORENSICS ARMED      [ ENFORCED 🔒 ]"
           - "   ↳ 🎛️ VPNLEAK PERIMETER MONITOR    : LIVE REALTIME DAEMON [ ACTIVE ✅ ]"
-          - "   ↳ 🧠⚡ EARLYOOM MEMORY DEFENSE      : LOW-RAM PROTECTED    [ ACTIVE ✅ ]"
+          - "   ↳ {% if oom_engine_selection == 'systemd-oomd' %}🧠⚡ SYSTEMD-OOMD PROCESS DEFENSE : CGroup MEMORY MANAGED [ ACTIVE ✅ ]{% else %}🧠⚡ EARLYOOM MEMORY DEFENSE      : LOW-RAM PROTECTED    [ ACTIVE ✅ ]{% endif %}"
           - "======================================================================================="
           - "  NOTICE: Persistent defense utilities and zero-trust sniffing daemons"
           - "  are initialized to lock your architectural parameters permanently."
@@ -2216,6 +2223,13 @@
           🛡️ SYSTEM PROVENANCE SECURITY ATTESTATION RECORD:
             ↳ FINAL HARDENING GRADE DESIGNATION: {{ security_tier_grade }}
           =======================================================================================
+          📋 HARDWARE-COGNITIVE SPECIFICATION MATRIX (STAGE 3 INTERFACE PROFILES):
+            ↳ ACTIVE TOPOLOGY PROFILE TYPE : [ {{ 'STACKABLE_MODULAR_INTEGRATION' if stackable_mode | bool else 'AUTONOMOUS_STANDALONE_COMPLIANCE' }} ]
+            ↳ DETECTED DRIVE MEDIA post-opt: [ {{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else 'FLASH_CELL_SSD' }} ]
+            ↳ CALCULATED CORE SWAP BOUNDARY: [ {{ target_formula_swap_mb | int }} MB file fallback ]
+            ↳ ENFORCED SWAPPINESS RATIO-SET: [ Priority PRI={{ target_swappiness | int }} ]
+            ↳ ACTIVE RAM SCHEDULER ENGINE  : [ {{ oom_engine_selection | upper }} MANAGEMENT PROTECTED ]
+          =======================================================================================
           📊 AUTOMATED CONFIGURATION TOPO DETECTIONS COMPLETED SUCCESSFULLY:
             ↳ NATIVE HARDWARE ROLE PROFILE     : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)') }} ]
             ↳ PRIMARY CAPTURED ADAPTER LINE    : {{ primary_network_interface | default('wls1') }}
@@ -2261,6 +2275,48 @@
             fully locked onto standalone secure block layout.
           {% endif %}
           =======================================================================================
+    - name: "FRAMEWORK DESIGNATION | LEDGER | Generate dynamic compliance specification sheet for Stage 3 deployment"
+      ansible.builtin.copy:
+        dest: "/etc/zero-trust-ledger.json"
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          {
+            "framework_provenance": {
+              "stage2_deployment_timestamp": "{{ ansible_facts['date_time']['isoformat_extended'] | default('2026-09-24T00:00:00') }}",
+              "target_os_family": "{{ ansible_facts['os_family'] }}",
+              "target_distribution": "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}",
+              "system_hostname": "{{ ansible_facts['hostname'] }}"
+            },
+            "hardware_cognitive_topology": {
+              "storage_media_type": "{{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else 'FLASH_CELL_SSD' }}",
+              "system_ram_allocated_gb": {{ system_ram_gb | int }},
+              "chassis_form_factor": "{{ hardware_form_factor | trim }}",
+              "primary_active_hardware_interface": "{{ primary_network_interface | default('wls1') }}"
+            },
+            "disk_geometry_and_layout": {
+              "boot_firmware_type": "{{ 'UEFI_SECURE_MODE' if is_uefi_mode | bool else 'LEGACY_BIOS_ARCHITECTURE' }}",
+              "root_filesystem_signature": "{{ 'BTRFS_SUBVOLUME_MATRIX' if is_btrfs_layout | bool else 'TRADITIONAL_BLOCK_FILESYSTEM' }}",
+              "persistent_root_uuid": "{{ active_root_uuid }}",
+              "is_fortress_nested_case": {{ is_fortress_case | bool }}
+            },
+            "applied_security_hardening_improvements": {
+              "at_rest_storage_encryption": {{ root_disk_is_encrypted | bool }},
+              "bootloader_password_protected": {{ boot_password_is_protected | bool }},
+              "secure_vault_subvolume_active": {{ secure_vault_enabled | bool if (is_btrfs_layout | bool and not failsafe_runtime_only_mode | bool) else false }},
+              "allocated_swap_footprint_mb": {{ target_formula_swap_mb | int }},
+              "applied_memory_swappiness_tuning": {{ target_swappiness | int }},
+              "userland_oom_defense_engine": "{{ oom_engine_selection }}"
+            },
+            "stage3_deployment_directives": {
+              "established_compliance_tier": "{{ security_tier_grade | regex_replace('^[^A-Za-z0-9]*', '') | regex_replace('[^A-Za-z0-9 ]*$', '') | trim }}",
+              "framework_operational_topology": "{{ 'STACKABLE_MODULAR_INTEGRATION' if stackable_mode | bool else 'AUTONOMOUS_STANDALONE_COMPLIANCE' }}"
+            }
+          }
+      when: "not ansible_check_mode"
+      become: true
+
 
   handlers:
     - name: "Trigger Active System Kernel Flush"

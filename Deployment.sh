@@ -20,8 +20,8 @@ fi
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE}")" && pwd)"
 cd "${BASE_DIR}"
 
-# Clear out any stale legacy log receipts from previous testing passes
-rm -f Stage#2-Hardening-Live-Run-Deployment.log Stage#2-Live-Run-Audit.log
+# Clear out any stale legacy log receipts from previous testing passes safely
+rm -f Stage#2-Hardening-Live-Run-Deployment.log Stage#2-Live-Run-Auditing.log
 
 echo -e "\033[1;32m[+] Initiating Stage 2 Zero-Trust Hardening Core Engine...\033[0m"
 echo -e "\033[1;34m----------------------------------------------------------------------\033[0m"
@@ -51,9 +51,9 @@ echo -e "\n\033[1;34m===========================================================
 echo -e "\033[1;33m🔬 RUNTIME FRAMEWORK INTEGRITY GATE AUDIT CHECK...\033[0m"
 echo -e "\033[1;34m======================================================================\033[0m"
 
-if [ -f "stage2_hardening.log" ] && [ -f "stage2_audit.log" ]; then
-    echo -e "\033[1;32m[ SUCCESS ] Hardening Core Receipt Verified  : stage2_hardening.log\033[0m"
-    echo -e "\033[1;32m[ SUCCESS ] Verification Audit Metric Verified: stage2_audit.log\033[0m"
+if [ -f "Stage#2-Hardening-Live-Run-Deployment.log" ] && [ -f "Stage#2-Live-Run-Auditing.log" ]; then
+    echo -e "\033[1;32m[ SUCCESS ] Hardening Core Receipt Verified  : Stage#2-Hardening-Live-Run-Deployment.log\033[0m"
+    echo -e "\033[1;32m[ SUCCESS ] Verification Audit Metric Verified: Stage#2-Live-Run-Auditing.log\033[0m"
     echo -e "\033[1;34m----------------------------------------------------------------------\033[0m"
     echo -e "\033[1;32m🏆 SUCCESSFUL DEPLOYMENT: STAGE 2 COMPLIANCE PHASE COMPLETELY PASSED!\033[0m"
     echo -e "\033[1;32m🥇 OVERALL DESIGN STATUS: [ PENTAGON-LEVEL ZERO-TRUST ARCHITECTURE ]\033[0m"
@@ -63,4 +63,22 @@ else
     exit 1
 fi
 echo -e "\033[1;34m======================================================================\033[0m\n"
+
+# =============================================================================
+# STEP 4: THE FINAL CRITICAL AUTHENTICATION POSTURE SHIFT REMINDER
+# =============================================================================
+echo -e "\033[1;31m################================================================================######\033[0m"
+echo -e "\033[1;33m🚨 🚨 CRITICAL AUTHENTICATION REMINDER: PASS-WD HASH REGENERATION REQUIRED 🚨 🚨\033[0m"
+echo -e "\033[1;31m################================================================================######\033[0m"
+echo -e "\033[1;37m"
+echo -e "  ⚠️  ATTENTION: The Stage 2 Post-Hardening Framework has successfully executed."
+echo -e "  Your 65,536-round SHA512 cryptographic password-stretching PAM parameters are armed."
+echo -e ""
+echo -e "  To prevent a catastrophic system lockout on your next interactive session initialization loop,"
+echo -e "  you MUST force an immediate update of your account credentials right now:"
+echo -e ""
+echo -e "  ➡️  1. Enforce Regular Account Hash Shift  : Execute 'passwd'"
+echo -e "  ➡️  2. Enforce Administrative Root Hash Shift : Execute 'passwd root'"
+echo -e "\033[0m"
+echo -e "\033[1;31m################================================================================######\033[0m\n"
 
