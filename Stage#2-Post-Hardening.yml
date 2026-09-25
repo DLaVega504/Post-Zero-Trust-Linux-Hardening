@@ -1197,16 +1197,19 @@
       become: true
      
 # =============================================================================
-# BLOCK 29 (REVISED): COMPREHENSIVE PRODUCTION SYSTEM COMPLIANCE GATES
-# DESCRIPTION: Natively purges legacy package layers, satisfies modern libraries, and aligns filesystem permissions for zero-trust daemons.
+# BLOCK 29 (REVISED): ZERO-HARDCODING MULTI-DISTRO DYNAMIC SHIELD POSTURE
+# DESCRIPTION: Dynamically formats user IPC constraints using clean space delimiters
+#              across all target distributions, and deploys a class-based,
+#              hardware-agnostic filter that permits post-deployment hot-plugging
+#              of safe peripherals (mice, keyboards, hubs) on any system installation.
 # =============================================================================
 
     - name: "SECURITY SERVICES | RECOVERY | Reset systemd execution lock metrics"
       ansible.builtin.command: "systemctl reset-failed usbguard.service"
       failed_when: false
       changed_when: false
-      when: "not ansible_check_mode"
       become: true
+      when: "not ansible_check_mode"
 
     - name: "PROVISIONING | ARCH | Forcefully purge legacy libdaq v2 conflicts to clear Snort 3 paths"
       community.general.pacman:
@@ -1234,35 +1237,16 @@
           {%- if live_os_group_administrators.stdout | trim | length > 0 -%}
             {%- set list_accumulator = list_accumulator + (live_os_group_administrators.stdout.split()) -%}
           {%- endif -%}
-          {{ list_accumulator | unique | join(',') }}
+          {{ list_accumulator | unique | join(' ') }}
 
-    - name: "USBGUARD | RECOVERY | Temporarily open daemon gates to safely read active equipment lines"
-      ansible.builtin.copy:
-        dest: "/etc/usbguard/usbguard-daemon.conf"
-        content: |
-          ImplicitPolicyTarget=allow
-          PresentDevicePolicy=allow
-          InsertedDevicePolicy=block
-          IPCAllowedGroups={{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }}
-          IPCAllowedUsers=root,{{ ansible_env.SUDO_USER | default(ansible_user_id) }}
-          RuleFile=/etc/usbguard/rules.conf
-        mode: '0600'
-      become: true
 
-    - name: "USBGUARD | SERVICE | Bounce daemon headlessly to open peripheral mapping streams"
-      ansible.builtin.systemd:
-        name: usbguard.service
-        state: restarted
-      become: true
-
-    - name: "USBGUARD | POLICY | Forcefully generate true active hardware whitelist snapshot"
+    - name: "USBGUARD | POLICY | Generate live production hardware policy blueprint"
       ansible.builtin.shell: "usbguard generate-policy > /etc/usbguard/rules.conf"
       become: true
-      when: "not ansible_check_mode"
 
-    - name: "CONFIGURATION | PERIPHERAL | Enforce ironclad system owner permissions over rules"
+    - name: "USBGUARD | POLICY | Ensure correct permissions on generated rules matrix"
       ansible.builtin.file:
-        path: "/etc/usbguard/rules.conf"
+        path: /etc/usbguard/rules.conf
         owner: root
         group: root
         mode: '0600'
@@ -1278,15 +1262,25 @@
           RestoreControllerDeviceState=false
           AuditBackend=FileAudit
           AuditFilePath=/var/log/usbguard/usbguard-audit.log
-          IPCAllowedGroups={{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }},secops
+          IPCAllowedGroups={{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }} secops
           IPCAllowedUsers={{ sanitized_ipc_users | trim }}
           RuleFile=/etc/usbguard/rules.conf
-          PresentDevicePolicy=block
+          PresentDevicePolicy=keep
         mode: '0600'
         owner: root
         group: root
       become: true
       register: enterprise_config_lock
+
+    - name: "USBGUARD | FINAL POSTURE LOCK | Restart service to enforce strict dynamic boundaries"
+      ansible.builtin.systemd:
+        name: usbguard.service
+        masked: false
+        state: restarted
+      become: true
+      when:
+        - "not ansible_check_mode"
+        - "enterprise_config_lock.changed"
 
     - name: "CONFIGURATION | TRIPWIRE | Purge non-existent legacy binaries from cleartext policy template"
       ansible.builtin.replace:
