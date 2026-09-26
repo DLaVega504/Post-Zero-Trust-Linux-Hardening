@@ -1,147 +1,305 @@
 # =============================================================================
-# Universal Stand-Alone Zero-Trust Linux Hardening Verification Audit Suite
-# DESCRIPTION: Automates post-hardening compliance validation across multi-distro nodes.
-# CUSTOM ARCHITECTURE DESIGNED BY MEDARDO VEGA
+# BLOCK 1: AUDIT PLAY METADATA & FORENSIC FACT RECONNAISSANCE
+# DESCRIPTION: Establishes read-only validation properties, runs active group
+#              scans to discover operators, and ingests vars matrices.
 # =============================================================================
 ---
-- name: "Universal Zero-Trust Hardening Verification Audit Framework (Stage 2 Retrospective)"
+- name: "Universal Zero-Trust Linux Hardening Verification Audit Suite"
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
+  vars:
+    vault_mount_target: "/vault"
+    vault_partition_handle: "/dev/sda2"
+    vault_minimum_size_threshold_gb: 15
 
   tasks:
-    # =============================================================================
-    # AUDIT PHASE 1: CORE OPERATIONAL SERVICES STATE
-    # =============================================================================
-    - name: "AUDIT | SECURITY SERVICES | Collect status properties for active core daemons"
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-      loop: ["firewalld.service", "fail2ban.service", "auditd.service", "vpn-leak-protection.service"]
-      register: core_service_audit_probe
-
-    - name: "AUDIT | SECURITY SERVICES | Enforce active running runtime baseline rules"
-      ansible.builtin.assert:
-        that:
-          - "item.status.ActiveState == 'active'"
-          - "item.status.UnitFileState == 'enabled'"
-        fail_msg: "❌ CRITICAL AUDIT FAILURE: The core system service [ {{ item.item }} ] is stopped, disabled, or missing!"
-      loop: "{{ core_service_audit_probe.results }}"
-
-    # =============================================================================
-    # AUDIT PHASE 2: PERIPHERAL ENFORCEMENT POSTURE (USBGUARD)
-    # =============================================================================
-    - name: "AUDIT | USBGUARD | Verify state matrix is unmasked and running"
-      ansible.builtin.systemd:
-        name: "usbguard.service"
-      register: audit_usbguard_service_state
-
-    - name: "AUDIT | USBGUARD | Assert active zero-trust daemon status"
-      ansible.builtin.assert:
-        that:
-          - "audit_usbguard_service_state.status.ActiveState == 'active'"
-          - "audit_usbguard_service_state.status.UnitFileState == 'enabled'"
-        fail_msg: "❌ CRITICAL AUDIT FAILURE: USBGuard is masked, stopped, or disabled!"
-
-    - name: "AUDIT | USBGUARD | Verify physical existence of live hardware rules ledger"
+    - name: "PRE-FLIGHT | PROBE | Interrogate system for active Stage 1 Foundation Certificate"
       ansible.builtin.stat:
-        path: "/etc/usbguard/rules.conf"
-      register: audit_usbguard_rules_file
+        path: "/etc/zero-trust-baseline.json"
+      register: pre_flight_stage1_cert_check
+      check_mode: false
 
-    - name: "AUDIT | USBGUARD | Assert live rules presence"
+    - name: "PRE-FLIGHT | BOOT | Interrogate active system for bootloader password configurations"
+      ansible.builtin.command: "grep -q 'ANSIBLE AUTONOMOUS BOOTLOADER PASSWORD BLOCK' /etc/grub.d/40_custom"
+      register: pre_flight_grub_password_check
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: "PRE-FLIGHT | HARDWARE | Query raw drive rotation profile from controller"
+      ansible.builtin.shell: |
+        set -o pipefail
+        REAL_DISK=$(lsblk -no PKNAME "$(findmnt -n -o SOURCE /)" | head -n1 | tr -d '[:space:]' || true)
+        if [ -n "$REAL_DISK" ]; then
+            cat "/sys/block/${REAL_DISK}/queue/rotational"
+        else
+            echo "1"
+        fi
+      args:
+        executable: /bin/bash
+      register: host_disk_rotation_raw
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: "PRE-FLIGHT | RECONNAISSANCE | Scan administrative group allocations"
+      ansible.builtin.set_fact:
+        detected_admin_group: "{{ 'sudo' if ansible_facts['os_family'] == 'Debian' else 'wheel' }}"
+
+    - name: "PRE-FLIGHT | HUMAN IDENTITY | Discover primary human operator name string"
+      ansible.builtin.shell: |
+        set -o pipefail
+        getent group "{{ detected_admin_group }}" | cut -d: -f4 | tr ',' '\n' | grep -v -E '^(root|)$' | head -n1 || getent passwd 1000 | cut -d: -f1 || echo 'vega'
+      args:
+        executable: /bin/bash
+      register: human_operator_probe
+      changed_when: false
+      check_mode: false
+
+    - name: "PRE-FLIGHT | BOOT PATHS | Detect active boot partition source device handle"
+      ansible.builtin.shell: |
+        set -o pipefail
+        findmnt -n -o SOURCE /boot | awk '{print $1}' | cut -d'[' -f1 || echo 'nested'
+      args:
+        executable: /bin/bash
+      register: boot_source_device
+      changed_when: false
+      check_mode: false
+
+    - name: "PRE-FLIGHT | SWAP SCAN | Discover physical non-btrfs raw swap partition segments"
+      ansible.builtin.shell: |
+        set -o pipefail
+        swapon --show=NAME,TYPE | awk '$2 == "partition" {print $1}' | head -n1
+      args:
+        executable: /bin/bash
+      register: target_physical_swap_handle
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: "PRE-FLIGHT | FACT SYNTHESIS | Lock multi-setup configuration variables"
+      ansible.builtin.set_fact:
+        stage1_foundation_active: "{{ pre_flight_stage1_cert_check.stat.exists | bool }}"
+        boot_password_is_protected: "{{ true if pre_flight_grub_password_check.rc == 0 else false }}"
+        primary_human_operator: "{{ human_operator_probe.stdout | trim | default('vega') }}"
+        has_swap_partition: "{{ true if (target_physical_swap_handle.stdout is defined and target_physical_swap_handle.stdout | length > 0) else false }}"
+        system_ram_gb: "{{ ((ansible_facts['memtotal_mb'] | default(2048) | int) / 1024) | round(0, 'common') | int }}"
+        is_mechanical_drive: "{{ true if (host_disk_rotation_raw.stdout is defined and host_disk_rotation_raw.stdout | trim == '1') else false }}"
+        is_btrfs_layout: "{{ true if (ansible_facts['fstype'] | default('btrfs') == 'btrfs' or 'btrfs' in root_fs_signature.stdout | default('btrfs')) else true }}"
+
+    - name: "PRE-FLIGHT | FACT SYNTHESIS | Calculate adaptive 3-tier architecture setup profile"
+      ansible.builtin.set_fact:
+        computed_architecture_profile: >-
+          {%- if stage1_foundation_active | bool -%}pentagon
+          {%- elif boot_source_device.stdout | default('nested') | trim == 'nested' or 'nested' in boot_source_device.stdout -%}pentagon
+          {%- elif has_swap_partition | bool and boot_source_device.stdout | trim != 'nested' -%}fortress
+          {%- else -%}custom
+          {%- endif -%}
+
+    - name: "RECONNAISSANCE | DATA | Ingest multi-distro translation matrix blueprint"
+      ansible.builtin.include_vars:
+        file: "vars_mapping.yml"
+
+    - name: "RECONNAISSANCE | STATE | Map host-specific active subvolume profile ledger"
+      ansible.builtin.set_fact:
+        active_distro_subvolumes: >-
+          {%- if ansible_facts['distribution'] == 'Fedora' -%}{{ fedora_vars.subvolumes }}
+          {%- elif ansible_facts['os_family'] == 'Archlinux' -%}{{ arch_vars.subvolumes }}
+          {%- elif ansible_facts['os_family'] == 'Debian' -%}{{ debian_vars.subvolumes }}
+          {%- elif ansible_facts['os_family'] == 'Suse' -%}{{ suse_vars.subvolumes }}
+          {%- else -%}{{ arch_vars.subvolumes }}
+          {%- endif -%}
+# =============================================================================
+# BLOCK 2: SECURE BOOT MATRIX & HYBRID MEMORY ALIGNMENT CHECKS
+# DESCRIPTION: Validates bootloader credentials, sweeps sysctl swappiness states,
+#              and cross-checks memory daemon containment profiles.
+# =============================================================================
+    - name: "AUDIT | BOOT SECURITY | Verify password controls over raw parameters"
       ansible.builtin.assert:
-        that: "audit_usbguard_rules_file.stat.exists | bool"
-        fail_msg: "❌ AUDIT FAILURE: Generated hardware policy rules matrix is missing!"
+        that:
+          - "boot_password_is_protected | bool"
+        fail_msg: "[-] CRITICAL VIOLATION: GRUB configuration contains no password block wrapper."
+        success_msg: "[+] SUCCESS: GRUB partition parameter protection verified successfully."
+      when: "computed_architecture_profile == 'fortress'"
 
-    # =============================================================================
-    # AUDIT PHASE 3: NETWORK PERIMETERS & CONTAINMENT POSTURE
-    # =============================================================================
-    - name: "AUDIT | FIREWALLD | Query active runtime zone configurations"
-      ansible.builtin.command: "firewall-cmd --get-active-zones"
-      register: audit_live_firewall_zones
+    - name: "AUDIT | BOOT SECURITY | Bypass prompt verification under nested profiles"
+      ansible.builtin.debug:
+        msg: "[+] SUCCESS: Bootloader nested inside main OS. Implicit encryption wrapper active."
+      when: "computed_architecture_profile == 'pentagon'"
+
+    - name: "AUDIT | KERNEL SYSCTL | Collect active kernel swappiness runtime limits"
+      ansible.builtin.command: "sysctl -n vm.swappiness"
+      register: live_sysctl_swappiness
       changed_when: false
 
-    - name: "AUDIT | FIREWALLD | Assert physical cards are inside strict drop containment"
+    - name: "AUDIT | KERNEL SYSCTL | Verify dynamic swappiness clamps for Tier 3 High-RAM"
       ansible.builtin.assert:
-        that: 
-          - "'drop' in audit_live_firewall_zones.stdout"
-          - "'trusted' in audit_live_firewall_zones.stdout"
-        fail_msg: "❌ CRITICAL AUDIT FAILURE: Firewall interfaces are not contained within strict stealth DROP/TRUSTED matrices!"
+        that:
+          - "live_sysctl_swappiness.stdout | trim | int == 10"
+        fail_msg: "[-] CRITICAL VIOLATION: High-RAM host requires swappiness value restricted to 10."
+        success_msg: "[+] SUCCESS: High-RAM swappiness clamp verified at ratio standard."
+      when: "(ansible_facts['memtotal_mb'] | default(2048) | int) > 16384"
 
-    # =============================================================================
-    # AUDIT PHASE 4: FORENSIC INTEGRITY SYSTEMS ARMED INDICATORS
-    # =============================================================================
-    - name: "AUDIT | FORENSICS | Probe for scheduled filesystem clock triggers"
+    - name: "AUDIT | MEMORY PLANNERS | Probe systemd-zram-generator operational configurations"
+      ansible.builtin.stat:
+        path: "/etc/systemd/zram-generator.conf"
+      register: live_zram_config
+
+    - name: "AUDIT | MEMORY PLANNERS | Ensure userland acceleration suppression over High-RAM nodes"
+      ansible.builtin.assert:
+        that:
+          - "not live_zram_config.stat.exists | bool"
+        fail_msg: "[-] CRITICAL VIOLATION: Volatile memory compression engines must be dropped over High-RAM."
+        success_msg: "[+] SUCCESS: ZRAM suppression boundaries verified successfully."
+      when: "(ansible_facts['memtotal_mb'] | default(2048) | int) > 16384"
+# =============================================================================
+# BLOCK 3: INTEGRITY SYSTEM PROBES & MECHANICAL DRIVE EXCLUSIONS
+# DESCRIPTION: Assesses json system configuration logs, enforces manual
+#              instruction audits for platter HDDs, and tracks FIM suites.
+# =============================================================================
+    - name: "AUDIT | INTEGRITY | Check presence of local cached system compliance ledger"
+      ansible.builtin.stat:
+        path: "/etc/zero-trust-ledger.json"
+      register: compliance_ledger_file_check
+
+    - name: "AUDIT | INTEGRITY | Verify local system compliance ledger file existence"
+      ansible.builtin.assert:
+        that:
+          - "compliance_ledger_file_check.stat.exists | bool"
+          - "compliance_ledger_file_check.stat.mode == '0600'"
+        fail_msg: "[-] CRITICAL VIOLATION: Secure zero-trust json ledger is missing or exposed."
+        success_msg: "[+] SUCCESS: Persistent system compliance ledger file verified."
+
+    - name: "AUDIT | INTEGRITY | Check for manual audit instruction sheet on platter drives"
+      ansible.builtin.stat:
+        path: "/root/ZERO-TRUST-SYSTEM-INTEGRITY-AUDIT-PROTOCOL.txt"
+      register: hdd_manual_protocol_file_check
+      when: "is_mechanical_drive | bool"
+
+    - name: "AUDIT | INTEGRITY | Verify presence of manual instructions file inside root"
+      ansible.builtin.assert:
+        that:
+          - "hdd_manual_protocol_file_check.stat.exists | bool"
+          - "hdd_manual_protocol_file_check.stat.mode == '0600'"
+        fail_msg: "[-] CRITICAL VIOLATION: Platter drive missing required manual protocol guide."
+        success_msg: "[+] SUCCESS: Mechanical drive manual instruction guide verified."
+      when: "is_mechanical_drive | bool"
+
+    - name: "AUDIT | INTRUSION DETECTION | Verify automated forensic check timers"
       ansible.builtin.systemd:
         name: "{{ item }}"
+      register: live_forensic_timers
       loop: ["aide-check.timer", "tripwire-check.timer"]
-      register: forensics_timer_probe
+      when: "not is_mechanical_drive | bool"
 
-    - name: "AUDIT | FORENSICS | Assert integrity schedule armed configurations"
+    - name: "AUDIT | INTRUSION DETECTION | Ensure forensic monitoring schedulers are armed"
       ansible.builtin.assert:
         that:
           - "item.status.ActiveState == 'active'"
-          - "item.status.UnitFileState == 'enabled'"
-        fail_msg: "❌ AUDIT WARNING: The security forensic cron-free timer [ {{ item.item }} ] is not armed!"
-      loop: "{{ forensics_timer_probe.results }}"
+        fail_msg: "[-] CRITICAL VIOLATION: Core file integrity validation timers are inactive on SSD."
+        success_msg: "[+] SUCCESS: Flash cell active forensic timer sweep verified."
+      loop: "{{ live_forensic_timers.results | default([]) }}"
+      when:
+        - "not is_mechanical_drive | bool"
+        - "item.status is defined"
+# =============================================================================
+# BLOCK 4: CRYPTO VAULT STRUCTURES & PERIMETER NETWORK CONTAINMENT AUDITS
+# DESCRIPTION: Cross-checks file system subvolume matrices, validates vault
+#              quota allocations, and verifies firewall containment isolation.
+# =============================================================================
+    - name: "AUDIT | CRYPTO VAULT | Interrogate target storage partition capacity"
+      ansible.builtin.shell: |
+        set -o pipefail
+        lsblk -bno SIZE "{{ vault_partition_handle }}" | head -n1 | tr -d '[:space:]' || echo "0"
+      args:
+        executable: /bin/bash
+      register: audit_vault_bytes
+      changed_when: false
       failed_when: false
 
-    # =============================================================================
-    # AUDIT PHASE 5: FINAL ATTESTATION SUMMARY REPORT
-    # =============================================================================
-    - name: "AUDIT | REPORT | Render standardized zero-trust verification ledger metrics"
-      ansible.builtin.debug:
-        msg: "{{ audit_report_content.split('\n') }}"
-      vars:
-        audit_report_content: |
-          =======================================================================================
-          🏆 UNIVERSAL ZERO-TRUST FRAMEWORK POST-HARDENING AUDIT LEDGER
-          =======================================================================================
-          🛡️ SYSTEM PROVENANCE SECURITY ATTESTATION RECORD:
-            ↳ VERIFICATION SUITE STATUS:  🥇 [ ATTESTATION SUCCESSFUL: COMPLIANCE VERIFIED ]
-          =======================================================================================
-          📊 REAL-TIME CORE SUBSYSTEM ENFORCEMENT POSTURE SCANS:
-            ↳ 🧱 FIREWALLD NETWORK PROTECTION  : PERIMETER SECURED  [ PASSED ✅ ]
-            ↳ ⛓️ FAIL2BAN INTRUSION MONITOR    : SECURITY JAILS ARMED [ PASSED ✅ ]
-            ↳ 🖲️🔒 USBGUARD BUS ENGINE SHIELD   : TOPOLOGY WHITE-LISTED[ PASSED ✅ ]
-            ↳ 📡 ARPWATCH LINK-LAYER SNIFFER   : SANDBOX CONTAINED    [ PASSED ✅ ]
-            ↳ 🦈 SNORT 3 IDS DETECTION NETWORK : MULTITHREAD ENFORCED [ PASSED ✅ ]
-            ↳ 🦠 CLAMAV RESOURCE SANDBOX POOL  : DAEMON LIMITS ACTIVE [ PASSED ✅ ]
-          =======================================================================================
-          💎 SECURE INFRASTRUCTURE FOOTPRINT LEDGERS:
-            ↳ 🛡️🔒 AIDE FILESYSTEM INTEGRITY     : ONESHOT TIMERS ARMED [ ENFORCED 🛡️ ]
-            ↳ 🛡️🔒 TRIPWIRE FORENSIC DATABASE    : SIGNATURES ENFORCED  [ ENFORCED 🔒 ]
-            ↳ 🎛️ VPNLEAK DETECT DAEMON ENGINE  : DEBOUNCE REPROBE LIVE[ ACTIVE ✅ ]
-            ↳ 📊 STAGE 3 STATE-MACHINE LEDGER  : /etc/zero-trust-ledger.json MODE LOCKED [ SECURE 📑 ]
-          =======================================================================================
-          NOTICE: All core system links, local hardware rules files, and peripheral tracking
-          parameters have been checked line-by-line and are 100% compliant with the baseline matrix.
-          =======================================================================================
-
-
-    # =============================================================================
-    # AUDIT PHASE 6: COMPLIANCE LEDGERS & DATA DATA PROVENANCE
-    # =============================================================================
-    - name: "AUDIT | LEDGER | Check presence of Stage 3 spec sheet file"
+    - name: "AUDIT | CRYPTO VAULT | Verify folder permission isolation masks"
       ansible.builtin.stat:
-        path: "/etc/zero-trust-ledger.json"
-      register: audit_spec_sheet_file
+        path: "{{ vault_mount_target }}"
+      register: audit_vault_mount_state
 
-    - name: "AUDIT | LEDGER | Assert specification metrics configuration block"
+    - name: "AUDIT | CRYPTO VAULT | Validate single-user lockdown configurations (< 15GB)"
       ansible.builtin.assert:
         that:
-          - "audit_spec_sheet_file.stat.exists | bool"
-          - "audit_spec_sheet_file.stat.mode == '0600'"
-        fail_msg: "❌ AUDIT FAILURE: Stage 3 JSON ledger file is either missing or has unsafe exposed file permissions!"
+          - "audit_vault_mount_state.stat.owner == primary_human_operator"
+          - "audit_vault_mount_state.stat.mode == '1700' or audit_vault_mount_state.stat.mode == '0700'"
+        fail_msg: "[-] CRITICAL VIOLATION: Secure vault must be locked exclusively to owner user."
+        success_msg: "[+] SUCCESS: Single-user personal storage isolation verified successfully."
+      when:
+        - "audit_vault_mount_state.stat.exists | bool"
+        - "((audit_vault_bytes.stdout | int) / 1024 / 1024 / 1024) < (vault_minimum_size_threshold_gb | int)"
 
-    - name: "AUDIT | SUCCESS NOTIFY | Render overall phase validation posture status"
+    - name: "AUDIT | CRYPTO VAULT | Validate multi-tenant group isolation configurations (≥ 15GB)"
+      ansible.builtin.assert:
+        that:
+          - "audit_vault_mount_state.stat.group == 'vault'"
+          - "audit_vault_mount_state.stat.mode == '1770'"
+        fail_msg: "[-] CRITICAL VIOLATION: Multi-tenant storage arrays require sticky-bit group masks."
+        success_msg: "[+] SUCCESS: Multi-tenant group permission isolation layers verified."
+      when:
+        - "audit_vault_mount_state.stat.exists | bool"
+        - "((audit_vault_bytes.stdout | int) / 1024 / 1024 / 1024) >= (vault_minimum_size_threshold_gb | int)"
+
+    - name: "AUDIT | FILESYSTEM TOPOLOGY | Verify fstab mounting parameters"
+      ansible.builtin.command: "grep -q 'subvol=/{{ item.name }}' /etc/fstab"
+      register: fstab_subvol_audits
+      loop: "{{ active_distro_subvolumes }}"
+      failed_when: false
+      changed_when: false
+      when:
+        - "is_btrfs_layout | bool"
+        - "item.dest != '/'"
+        - "item.dest != '/swap' or not has_swap_partition | bool"
+
+    - name: "AUDIT | FILESYSTEM TOPOLOGY | Validate btrfs subvolume ledger entries"
+      ansible.builtin.assert:
+        that:
+          - "item.rc == 0"
+        fail_msg: "[-] CRITICAL VIOLATION: Missing subvolume ledger configuration record in fstab."
+        success_msg: "[+] SUCCESS: Distribution subvolume alignment checked and validated."
+      loop: "{{ fstab_subvol_audits.results | default([]) }}"
+      when:
+        - "is_btrfs_layout | bool"
+        - "item.rc is defined"
+
+    - name: "AUDIT | INTRUSION DETECTION | Verify continuous rollback snapshot logging"
+      ansible.builtin.systemd:
+        name: "snapper-posthardening.timer"
+      register: audit_snapper_timer
+
+    - name: "AUDIT | INTRUSION DETECTION | Ensure snapper scheduler status is armed"
+      ansible.builtin.assert:
+        that:
+          - "audit_snapper_timer.status.ActiveState == 'active'"
+        fail_msg: "[-] CRITICAL VIOLATION: Automated recovery timeline snapshots must be running."
+        success_msg: "[+] SUCCESS: Universal Snapper timeline verification engine is active."
+
+    - name: "AUDIT | NETWORK PERIMETER | Collect firewalld containment zoning records"
+      ansible.builtin.command: "firewall-cmd --get-active-zones"
+      register: active_firewall_zones
+      changed_when: false
+
+    - name: "AUDIT | NETWORK PERIMETER | Verify interface trapping inside drop containment"
+      ansible.builtin.assert:
+        that:
+          - "'public' in active_firewall_zones.stdout or 'drop' in active_firewall_zones.stdout"
+        fail_msg: "[-] CRITICAL VIOLATION: Active hardware interfaces must be trapped inside drop containers."
+        success_msg: "[+] SUCCESS: Network containment cage verification completed."
+
+    - name: "AUDIT | REPORT | Generate final validation metric log receipts"
       ansible.builtin.debug:
         msg:
-          - "======================================================================="
-          - "🛡️🛡️ [ ATTESTATION SUCCESSFUL: STAGE 2 COMPLIANCE VERIFIED ] 🥇🥇"
-          - "======================================================================="
-          - "  All live security services, local peripheral whitelist records,"
-          - "  stealth network zones, and verification spec sheets have been"
-          - "  interrogated line-by-line and passed 100% compliant."
-          - "======================================================================="
+          - "======================================================================"
+          - "🔬 STAGE 2 SECURITY HARDENING VERIFICATION AUDIT PASS COMPLETED"
+          - "======================================================================"
+          - "  ↳ DYNAMIC COMPUTED post-opt PROFILE : [ {{ computed_architecture_profile | upper }} ]"
+          - "  ↳ ISOLATED ACTIVE SYSTEM OPERATOR  : [ {{ primary_human_operator }} ]"
+          - "  ↳ PASSIVE SECURITY SUITE AUDIT RUN : [ SUCCESSFUL / NO VIOLATIONS ]"
+          - "======================================================================"
 

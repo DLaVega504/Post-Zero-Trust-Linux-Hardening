@@ -68,7 +68,6 @@ debian_vars:
     - { name: "@cache", dest: "/var/cache/apt/archives" }
     - { name: "@docker", dest: "/var/lib/docker" }
     - { name: "@srv", dest: "/srv" }
-
 # 🗄️ FEDORA WORKSTATION PLATFORM PROFILE CONFIGURATION Presets
 fedora_vars:
   admin_group: "wheel"
@@ -99,7 +98,6 @@ fedora_vars:
     - { name: "log", dest: "/var/log" }
     - { name: "cache", dest: "/var/cache/dnf" }
     - { name: "containers", dest: "/var/lib/containers" }
-
 # 🗄️ OPENSUSE TUMBLEWEED/LEAP PLATFORM PROFILE CONFIGURATION Presets
 suse_vars:
   admin_group: "wheel"
