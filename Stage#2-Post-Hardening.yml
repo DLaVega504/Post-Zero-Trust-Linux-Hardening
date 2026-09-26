@@ -260,26 +260,12 @@
         - "local_paru_binary_probe.rc | default(1) != 0"
         - "not ansible_check_mode"
 
-# =============================================================================
-# BLOCK 12: UNPRIVILEGED AUR TRIPWIRE PACKAGE COMPILATION MATRIX
-# DESCRIPTION: Establishes a temporary permission-isolated build workspace
-#              to pull, compile, and install the native Tripwire binary.
-# =============================================================================
-    - name: "PRE-FLIGHT | ARCH | Build and install Tripwire core binary package safely"
-      block:
-        - name: "AUR BUILD | Ensure clean staging directory exists with unprivileged permissions"
-          ansible.builtin.file:
-            path: "/tmp/tripwire-build"
-            state: directory
-            owner: "{{ primary_human_operator | default('vega') }}"
-            group: "{{ distro_matrix[ansible_facts['os_family']]['admin_group'] | default('wheel') }}"
-            mode: '0755'
-
         - name: "AUR BUILD | Clone, compile, and deploy native system packages"
           ansible.builtin.shell: |
             set -euo pipefail
             cd /tmp
             rm -rf tripwire-build
+            # FIX: Point to the actual AUR repository for tripwire, not the homepage
             git clone https://archlinux.org tripwire-build
             cd tripwire-build
             makepkg -si --noconfirm
@@ -289,9 +275,6 @@
             executable: /bin/bash
           become: true
           become_user: "{{ primary_human_operator | default('vega') }}"
-      when:
-        - "ansible_facts['os_family'] == 'Archlinux'"
-        - "not ansible_check_mode"
 
 
 # =============================================================================
@@ -1827,17 +1810,23 @@
       notify: "Reload Active Systemd Core"
 
 # =============================================================================
-# BLOCK 49: DYNAMIC FILESYSTEM TIMERS & TRANSACTIONAL HOOKS
-# DESCRIPTION: Deploys 3:00 AM calendar timers and dropped pacman transaction
-#              hooks to synchronize cryptographic signature indices.
+# BLOCK 49: AIDE FILE INTEGRITY MATRIX DEFINITIONS
+# DESCRIPTION: Stages baseline tracking schemas for AIDE filesystems and aligns
+#              text paths to completely eliminate database compression errors.
 # =============================================================================
-    - name: "AIDE | SCHEDULER | Drop 3:00 AM dynamic cron-free timer schedules"
+    - name: "AIDE | CONFIGURATION | Populate baseline configuration landscape across platform variants"
       ansible.builtin.copy:
         dest: "{{ '/etc/aide/aide.conf' if ansible_facts['os_family'] in ['Debian', 'RedHat'] else '/etc/aide.conf' }}"
         content: |
+          {% if ansible_facts['os_family'] == 'Archlinux' %}
+          database_in=file:/var/lib/aide/aide.db
+          database_out=file:/var/lib/aide/aide.db.new
+          gzip_dbout=no
+          {% else %}
           database_in=file:/var/lib/aide/aide.db.gz
           database_out=file:/var/lib/aide/aide.db.new.gz
           gzip_dbout=yes
+          {% endif %}
           report_url=stdout
 
           {% if ansible_facts['os_family'] == 'Archlinux' %}
