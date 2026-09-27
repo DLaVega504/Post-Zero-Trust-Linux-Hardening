@@ -159,15 +159,13 @@
 
     - name: "PRE-FLIGHT | NOTIFY | Render visual compliance track foundation confirmation"
       ansible.builtin.debug:
-        msg: "{{ banner_content.split('\n') }}"
-      vars:
-        banner_content: |
+        msg: >-
           ======================================================================
-          {% if pre_flight_stage1_cert_check.stat.exists | bool %}
-             [ ✓ ] STAGE 1 FOUNDATION CERTIFICATE VERIFIED: INTEGRATION ARMED.
-          {% else %}
-                     [ ✓ ] AUTONOMOUS COMPLIANCE MODE DEPLOYED.
-          {% endif %}
+          {% if pre_flight_stage1_cert_check.stat.exists | bool -%}
+          [ ✓ ] STAGE 1 FOUNDATION CERTIFICATE VERIFIED: FULL-STACK STACKABLE INTEGRATION ARMED.
+          {%- else -%}
+          [ ✓ ] AUTONOMOUS COMPLIANCE MODE DEPLOYED.
+          {%- endif %}
           ======================================================================
 
 # =============================================================================
@@ -263,12 +261,11 @@
 # DESCRIPTION: Leverages the discovered local Paru binary wrapper path to 
 #              natively pull down and deploy the AUR Tripwire package cleanly.
 # =============================================================================
+
     - name: "PRE-FLIGHT | ARCH | Install Tripwire via Paru AUR wrapper automatically"
       ansible.builtin.command: "paru -S --noconfirm --needed tripwire-git"
       become: true
       become_user: "{{ primary_human_operator | default('vega') }}"
-      register: paru_tripwire_install_output
-      changed_when: "'Installing' in paru_tripwire_install_output.stdout or 'reinstalling' in paru_tripwire_install_output.stdout"
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "not skip_tripwire_installation | bool"
@@ -1375,9 +1372,8 @@
           # AUTOMATED ZERO-TRUST USERLAND OUT-OF-MEMORY PERFORMANCE PRESETS
           # CUSTOM SYSTEM ARCHITECTURE BUILT BY MEDARDO VEGA
           # =================================================================
-          EARLYOOM_ARGS="-r 3600 -m 10 -M 5 --prefer ^(brave|chrome|firefox)$ --avoid ^(systemd|auditd|sshd|vpn-leak-monitor)$"
+          EARLYOOM_ARGS="-r 3600 -m {{ hardware_profile_matrix['tier_1']['swappiness'] | int }} -M {{ (hardware_profile_matrix['tier_1']['swappiness'] | int * 1.2) | round(0) | int }} --prefer ^(brave|chrome|firefox)$ --avoid ^(systemd|auditd|sshd|vpn-leak-monitor)$"
       register: earlyoom_config_state
-      become: true
       when: "not ansible_check_mode"
 
     - name: "EARLYOOM | LIFECYCLE | Standardize userland memory defense running state"
@@ -1737,7 +1733,6 @@
       when:
         - "not ansible_check_mode"
         - "arpwatch_config_state.changed | default(false)"
-      become: true
 
 # =============================================================================
 # BLOCK 42: HARDWARE-AWARE USBGUARD FIREWALLD PROFILE LAYOUTS
@@ -1887,18 +1882,12 @@
 # =============================================================================
     - name: "SECURITY SERVICES | SNORT | STAGE 3 | Ensure distribution unit is synchronized"
       ansible.builtin.systemd:
-        name: >-
-          {%- if ansible_facts['os_family'] == 'Archlinux' -%}
-            snort@{{ primary_network_interface | default('wls1') | trim }}.service
-          {%- else -%}
-            {{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service') }}
-          {%- endif -%}
+        name: "{{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service') }}"
         state: "{{ 'restarted' if (snort_conf_fix.changed | default(false) or snort_template_state.changed | default(false)) else 'started' }}"
         enabled: true
       when:
         - "not ansible_check_mode"
         - "snort_version_probe.stat.exists | bool or snort_template_state.changed | default(false) or ansible_facts['os_family'] == 'Debian'"
-      become: true
 
 # =============================================================================
 # BLOCK 45-B: SNORT NETWORK INTERFACE SYNCHRONIZATION OVERRIDE
@@ -2841,24 +2830,15 @@
         state: "started"
         enabled: true
       when: "not ansible_check_mode"
-
 # =============================================================================
 # BLOCK 68: SECURITY LIFECYCLE RECOVERY & RESET PARAMETERS
 # DESCRIPTION: Headlessly flushes failure records across local monitor daemons,
 #              and cleans lock stacks on fail2ban storage interfaces.
 # =============================================================================
-
     - name: "SECURITY SERVICES | RECOVERY | Flush systemd service failure caches"
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: reset-failed
-      loop:
-        - usbguard.service
-        - clamd.service
-        - earlyoom.service
-        - "arpwatch@{{ primary_network_interface | default('wls1') | trim }}.service"
-        - "snort@{{ primary_network_interface | default('wls1') | trim }}.service"
+      ansible.builtin.command: "systemctl reset-failed usbguard.service clamd.service snort.service 2>/dev/null"
       failed_when: false
+      changed_when: false
       become: true
       when: "not ansible_check_mode"
 
@@ -2873,7 +2853,6 @@
       failed_when: false
       changed_when: false
       when: "not ansible_check_mode"
-
 # =============================================================================
 # BLOCK 69: DAEMON INVENTORY RE-SCAN AND UNMASK HOOKS
 # DESCRIPTION: Forces the systemd control engines to completely unmask target
@@ -2911,36 +2890,33 @@
 # DESCRIPTION: Loops through and maps system-wide baseline defense daemons and
 #              forensic timers to start and enable permanently on host boot.
 # =============================================================================
-
     - name: "SECURITY SERVICES | BOOT | Universally manage baseline defense utilities state"
       ansible.builtin.systemd:
-        name: "{{ item }}"
+        name: >-
+          {%- set active_interface = primary_network_interface | default('wls1') | trim -%}
+          {%- if item == 'arpwatch' -%}
+            arpwatch@{{ active_interface }}.service
+          {%- elif item == 'snort' -%}
+            {%- if ansible_facts['os_family'] == 'Archlinux' -%}
+              snort.service
+            {%- elif ansible_facts['os_family'] == 'Debian' -%}
+              snort-init.service
+            {%- else -%}
+              {{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service') }}
+            {%- endif -%}
+          {%- elif item == 'clamav' -%}
+            {{ 'clamav-daemon' if ansible_facts['os_family'] == 'Debian' else 'clamd' }}
+          {%- else -%}
+            {{ item }}
+          {%- endif -%}
         enabled: true
-        masked: false
         state: >-
           {%- if is_mechanical_drive | bool and (item == 'aide-check.service' or item == 'tripwire-check.service') -%}
             stopped
           {%- else -%}
-            started
+            restarted
           {%- endif -%}
-      loop: >-
-        {%- set active_interface = primary_network_interface | default('wls1') | trim -%}
-        {%- set base_services = [
-          'firewalld.service',
-          'fail2ban.service',
-          'usbguard.service',
-          'auditd.service',
-          'earlyoom.service',
-          'aide-check.timer',
-          'tripwire-check.timer'
-        ] -%}
-        {%- if ansible_facts['os_family'] == 'Archlinux' -%}
-          {{ base_services + ['arpwatch@' ~ active_interface ~ '.service', 'snort@' ~ active_interface ~ '.service'] }}
-        {%- elif ansible_facts['os_family'] == 'Debian' -%}
-          {{ base_services + ['arpwatch@' ~ active_interface ~ '.service', 'snort-init.service'] }}
-        {%- else -%}
-          {{ base_services + ['arpwatch.service', distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service')] }}
-        {%- endif -%}
+      loop: "{{ ['firewalld', 'fail2ban', 'usbguard', 'auditd', 'arpwatch', 'snort', 'aide-check.timer', 'tripwire-check.timer'] if (system_ram_gb | int <= 4) else ['firewalld', 'fail2ban', 'usbguard', 'auditd', 'arpwatch', 'snort', 'clamav', 'aide-check.timer', 'tripwire-check.timer'] }}"
       failed_when: false
       ignore_errors: true
       become: true
@@ -2975,7 +2951,6 @@
 # DESCRIPTION: Triggers a post-hardening sweep on cache misses/modifications,
 #              saves results, and cleanly isolates live dynamic audit indices.
 # =============================================================================
-
     - name: "COMPLIANCE | Run post-deployment security hardening verification scan"
       ansible.builtin.shell: "lynis audit system --profile /etc/lynis/custom.prf --quick"
       args:
@@ -2985,14 +2960,16 @@
       changed_when: false
       when:
         - "not ansible_check_mode"
-        - "dynamic_post_score_cached is none or system_was_modified | bool"
+        - "system_was_modified | bool or not post_flight_lynis_cache_check.stat.exists | bool"
 
     - name: "COMPLIANCE | Calculate real-time framework execution metrics"
       ansible.builtin.set_fact:
         lynis_pre_score_final: "{{ dynamic_pre_score | int }}"
         lynis_post_score_final: >-
-          {%- if post_lynis_scan.skipped is not defined and post_lynis_scan.stdout is defined and 'Hardening index' in post_lynis_scan.stdout -%}
-            {{ (post_lynis_scan.stdout | regex_search('Hardening index\s*:\s*(\d+)', '\1') | first) | trim | int }}
+          {%- if post_lynis_scan.skipped is not defined or not post_lynis_scan.skipped -%}
+            {%- set live_stdout = post_lynis_scan.stdout | default('', true) -%}
+            {%- set matched_score = live_stdout | regex_search('Hardening index.*:.*(\\d+)', '\\1') -%}
+            {{ (matched_score | trim | int) if (matched_score is defined and matched_score | length > 0) else (dynamic_post_score_cached | default(dynamic_pre_score) | int) }}
           {%- else -%}
             {{ dynamic_post_score_cached | default(dynamic_pre_score) | int }}
           {%- endif -%}
@@ -3006,7 +2983,7 @@
         mode: '0600'
       when:
         - "not ansible_check_mode"
-        - "post_lynis_scan.skipped is not defined"
+        - "post_lynis_scan.skipped is not defined or not post_lynis_scan.skipped"
 
     - name: "COMPLIANCE | Calculate performance delta values"
       ansible.builtin.set_fact:
