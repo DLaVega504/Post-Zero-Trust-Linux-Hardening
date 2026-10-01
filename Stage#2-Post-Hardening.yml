@@ -29,11 +29,8 @@
     is_uefi_mode: true
     boot_password_is_protected: false
     active_distro_subvolumes:
-      - { name: "var_log", dest: "/var/log" }
       - { name: "var_audit", dest: "/var/log/audit" }
-      - { name: "tmp", dest: "/tmp" }
-      - { name: "home", dest: "/home" }
-      - { name: "root", dest: "/" }
+
 # =============================================================================
 # BLOCK 2: SYSTEM HARDWARE ASSESSMENT MATRIX
 # DESCRIPTION: Sets hardware resource limits, thread thresholds,
@@ -483,6 +480,7 @@
 # DESCRIPTION: Mounts top-level parent pool ID 5 universally to execute
 #              distribution-aware layout verification and state corrections.
 # =============================================================================
+
     - name: "STORAGE | AUDIT | Mount raw parent pool ID 5 for structure validation"
       ansible.builtin.shell: |
         mkdir -p /tmp/btrfs_stage2_verification
@@ -518,15 +516,17 @@
       register: topo_sync_status
       changed_when: topo_sync_status.rc == 0
       when:
-        - "is_btrfs_layout | bool"
+        - "root_fs_signature.stdout is defined and 'btrfs' in root_fs_signature.stdout"
         - "not ansible_check_mode"
         - "item.dest != '/'"
         - "item.dest != '/home'"
+
 # =============================================================================
 # BLOCK 18B: BTRFS TARGET MOUNT POINT DIRECTORY PRE-CREATION
 # DESCRIPTION: Drops the required physical directory anchors directly into the
 #              running filesystem path before launching mount configurations.
 # =============================================================================
+
     - name: "STORAGE | AUDIT | Clean system verification mounts"
       ansible.builtin.shell: "umount /tmp/btrfs_stage2_verification && rmdir /tmp/btrfs_stage2_verification"
       changed_when: false
@@ -544,7 +544,7 @@
         mode: '0755'
       loop: "{{ active_distro_subvolumes }}"
       when:
-        - "is_btrfs_layout | bool"
+        - "root_fs_signature.stdout is defined and 'btrfs' in root_fs_signature.stdout"
         - "not ansible_check_mode"
         - "item.dest != '/'"
 
@@ -621,14 +621,17 @@
           {% set block_path = item.stdout | split(':') | first %}
           {% set signature = item.stdout | split(':') | last | trim %}
           {% if signature == 'crypto_LUKS' %}
-           [ 🔒 ] PRE-EXISTING ENCRYPTED CONTAINER VERIFIED ON [ {{ block_path }} ]
-               ↳ Target signature matches framework standard. Data envelope preserved.
-          {% elif signature != 'BLANK' and signature != 'crypto_LUKS' %}
+           [ ✓ ] DISCOVERED ENCRYPTED PARTITION ON [ {{ block_path }} ]
+               ↳ [ ✓ ] SKIPPING: Target signature matches framework standard. Data envelope preserved.
+          {% elif signature != 'BLANK' and signature != 'ACTIVE_SYSTEM_RESERVED' %}
            [ 📁 ] ACTIVE FILESYSTEM SCHEMATIC ENCOUNTERED ON [ {{ block_path }} ] (TYPE: {{ signature }})
-               ↳ Operational safety trip active: Skipping modifications to prevent data loss.
+               ↳ [ ⚙️ ] SKIPPING: Operational safety trip active to prevent data loss.
+          {% elif signature == 'ACTIVE_SYSTEM_RESERVED' %}
+           [ 🖥️ ] SYSTEM OS CORE MOUNT ROUTE ON [ {{ block_path }} ]
+               ↳ [ ⚙️ ] SKIPPING: Protected target running core operating system.
           {% else %}
-           [ 🎯 ] EMPTY SECURE CANDIDATE TARGET DETECTED ON [ {{ block_path }} ]
-               ↳ [ CAUTION ] Storage segment unmapped. Armed for automated zero-trust framework injection.
+           [ ✓ ] UNPROTECTED EMPTY PARTITION DISCOVERED ON [ {{ block_path }} ]
+               ↳ [ 🔥 ] VAULT PROTOCOL ACTIVATED: Armed for automated framework injection.
           {% endif %}
           =======================================================================================
       loop: "{{ candidate_vault_signatures_probe.results | default([]) }}"
@@ -655,12 +658,12 @@
           {{ configured_list.data }}
       when: "secure_vault_enabled | bool"
 
-
 # =============================================================================
 # BLOCK 20B: VAULT CRYPTOGRAPHIC ARTIFACT EXECUTION ENGINE
 # DESCRIPTION: Provisions high-iteration Argon2id security wrappers over empty sectors
 #              while explicitly staying clear of populated partitions.
 # =============================================================================
+
     - name: "VAULT ENGINE | CRYPTO | Deploy argon2id LUKS2 structures and create clean Btrfs file spaces"
       ansible.builtin.shell: |
         set -euo pipefail
@@ -689,6 +692,8 @@
         - "not ansible_check_mode"
       register: crypto_formatting_engine_status
       changed_when: "'Cryptographic container execution complete' in crypto_formatting_engine_status.stdout"
+
+      
 # =============================================================================
 # BLOCK 21: SNAP CONSTRAINTS & SNORT ENVIRONMENT PRE-INITIALIZATION
 # DESCRIPTION: Forces the presence of missing logging targets and configuration
@@ -742,15 +747,9 @@
 # DESCRIPTION: Resolves persistent UUIDs, storage media rotation metrics,
 #              and home local area network boundaries.
 # =============================================================================
+
     - name: "SCAN | Discover absolute persistent root device UUID"
-      ansible.builtin.shell: |
-        set -o pipefail
-        TARGET_DEV="{{ root_source_device.stdout | default('') | trim }}"
-        if [ -z "$TARGET_DEV" ] || [ "$TARGET_DEV" = "/dev/null" ]; then
-            echo "check_mode_fallback_uuid"
-        else
-            blkid -s UUID -o value "$TARGET_DEV"
-        fi
+      ansible.builtin.shell: "findmnt -n -o UUID /"
       args:
         executable: /bin/bash
       register: live_root_uuid
@@ -972,11 +971,13 @@
       when:
         - "has_swap_partition | bool"
         - "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 30: SANITIZED EXPLICIT STORAGE SUBVOLUME LAYOUT LEDGERS
 # DESCRIPTION: Enforces fstab configurations using state: present to safely write
 #              subvolume profiles and purges legacy vault leak data.
 # =============================================================================
+
     - name: "STORAGE | LEDGER | Clean legacy unmanaged vault leakage records from fstab"
       ansible.posix.mount:
         path: "{{ item }}"
@@ -994,16 +995,18 @@
     - name: "STORAGE | LEDGER | Commit standardized subvolumes to physical fstab parameters"
       ansible.posix.mount:
         path: "{{ item.dest }}"
-        src: "UUID={{ active_root_uuid }}"
+        src: "UUID={{ live_root_uuid.stdout | trim }}"
         fstype: "btrfs"
-        opts: "rw,{{ perf_mount_opts | default('noatime,space_cache=v2,compress=zstd:1') }},nodev,nosuid,nofail,subvol=/{{ item.name }}"
+        opts: "rw,relatime,compress=zstd:3,space_cache=v2,nodev,nosuid,nofail,subvol=/@{{ item.name }}"
         state: present
       loop: "{{ active_distro_subvolumes | default([]) }}"
       when:
-        - "is_btrfs_layout is defined and is_btrfs_layout | bool"
+        - "root_fs_signature.stdout is defined and 'btrfs' in root_fs_signature.stdout"
         - "not ansible_check_mode"
         - "item.dest != '/'"
+        - "item.dest != '/home'"
         - "not (item.dest == '/swap' and has_swap_partition | bool)"
+
 # =============================================================================
 # BLOCK 31: COMPREHENSIVE FALLBACK SWAPSPACE ASSESSMENT MATRIX
 # DESCRIPTION: Evaluates physical folder locations, probes current filesystem
@@ -1248,20 +1251,6 @@
         masked: false
       when: "not ansible_check_mode"
 
-# =============================================================================
-# BLOCK 36: PRIVILEGED SYSCTL CONFIGURATION CLEANUP PASS
-# DESCRIPTION: Sanitizes preexisting fallback auditing parameters on disk
-#              and removes conflicting legacy standalone swappiness map parameters.
-# =============================================================================
-    - name: "SYSCTL | SANITIZATION | Purge legacy conflicting standalone memory tuning configurations"
-      ansible.builtin.file:
-        path: "/etc/sysctl.d/{{ item }}"
-        state: absent
-      loop:
-        - "99-swappiness.conf"
-        - "50-memory-tuning.conf"
-        - "99-memory-tunning.conf"
-      when: "not ansible_check_mode"
 # =============================================================================
 # BLOCK 36: PRIVILEGED SYSCTL CONFIGURATION CLEANUP PASS
 # DESCRIPTION: Sanitizes preexisting fallback auditing parameters on disk
@@ -1706,7 +1695,7 @@
       become: true
 
 # =============================================================================
-# BLOCK 51: HARDWARE-AWARE USBGUARD FIREWALLD PROFILE LAYOUTS
+# BLOCK 51: HARDWARE CONTROLLER & NETWORK ENVIRONMENT DEPLOYMENTS
 # DESCRIPTION: Automates real-time baseline hardware mapping policies, fixes
 #              IPC allowed group access blocks, and secures configuration states.
 # =============================================================================
@@ -1722,10 +1711,10 @@
       ansible.builtin.shell: |
         set -euo pipefail
         mkdir -p /etc/usbguard
-        # Only execute rule mapping if file footprint is absent or empty to protect connected components
-        if [ ! -s /etc/usbguard/rules.conf ]; then
-            /usr/bin/usbguard generate-policy > /etc/usbguard/rules.conf
-        fi
+        # Completely remove any existing corrupted or malformed rules file to clear parsing flags
+        rm -f /etc/usbguard/rules.conf
+        # Generate a pristine, direct snapshot policy matching your connected mouse and Bluetooth adapters
+        /usr/bin/usbguard generate-policy > /etc/usbguard/rules.conf
         chmod 0600 /etc/usbguard/rules.conf
         chown root:root /etc/usbguard/rules.conf
       args:
@@ -1748,7 +1737,7 @@
           AuditBackend=FileAudit
           AuditFilePath=/var/log/usbguard/usbguard-audit.log
           RuleFile=/etc/usbguard/rules.conf
-          IPCAllowedGroups=wheel sudo admin root
+          IPCAllowedGroups={{ detected_admin_group | default('wheel') }} sudo admin root
           IPCAllowedUsers=root {{ primary_human_operator | default('vega') | trim }}
       register: usbguard_config_state
       notify: "Reload Active Systemd Core"
@@ -1758,6 +1747,8 @@
         name: usbguard.service
         enabled: true
       when: "not ansible_check_mode"
+
+
 # =============================================================================
 # BLOCK 52: FIREWALLD STATIC PERIMETER CONTAINMENT CONTROL
 # DESCRIPTION: Enforces absolute drop posture on your physical wireless link
@@ -1801,6 +1792,7 @@
       when:
         - "not ansible_check_mode"
         - "firewalld_native | default(true) | bool"
+
 # =============================================================================
 # BLOCK 53: SNORT INTRUSION DETECTION ENGINE LAYOUTS
 # DESCRIPTION: Deploys a fully-tuned Snort 2 variable matrix map and injects
@@ -1847,20 +1839,18 @@
         group: root
         mode: '0644'
         content: |
-          var HOME_NET {{ dynamic_home_net | default('192.168.1.0/24') }}
+          var HOME_NET {{ dynamic_home_net | default('192.168.1.145/24') | trim }}
           var EXTERNAL_NET !$HOME_NET
 
-          config classification: /etc/snort/classification.config
-          config reference: /etc/snort/reference.config
+          # Engine & Logging Configurations
+          config daq: pcap
+          config daq_mode: passive
+          config logdir: /var/log/snort
 
+          # Core Preprocessors to satisfy Policy 0
           preprocessor stream5_global: max_tcp 8192, track_tcp yes, track_udp yes
-          preprocessor stream5_tcp: policy windows, detect_anomalies, ports all
-          preprocessor stream5_udp: timeout 30
-
-          preprocessor http_inspect: global ipproto tcp ports { 80 8080 }
-          preprocessor http_inspect_server: server default, profile all, ports { 80 8080 }
-
-          output alert_fast: stdout
+          preprocessor stream5_tcp: policy windows
+          preprocessor stream5_udp:
       register: snort_conf_fix
       become: true
 
@@ -1882,28 +1872,11 @@
         content: |
           [Service]
           ExecStart=
-          ExecStart=/usr/bin/snort -c /etc/snort/snort.lua --daq-dir {{ distro_matrix[ansible_facts['os_family']]['snort_daq_dir'] }} --dynamicpreprocessor-dir {{ distro_matrix[ansible_facts['os_family']]['snort_dynamic_preproc'] }} -i {{ primary_network_interface | default('wls1') | trim }} -A fast
+          ExecStart=/usr/bin/snort -c /etc/snort/snort.lua --daq-dir {{ distro_matrix[ansible_facts['os_family']]['snort_daq_dir'] | default('/usr/lib/daq') }} -i {{ primary_network_interface | default('wls1') | trim }} -A fast
       register: snort_systemd_override_state
       notify: "Reload Active Systemd Core"
       become: true
-# =============================================================================
-# BLOCK 54: SERVICE POSTURE PRE-REQUISITE ANCHORS
-# DESCRIPTION: Forces the systemd control engine to completely unmask target
-#              IDS service files BEFORE initiating execution loops to bypass race traps.
-# =============================================================================
-    - name: "SECURITY SERVICES | SNORT | Ensure target distribution unit is completely unmasked"
-      ansible.builtin.systemd:
-        name: >-
-          {%- if ansible_facts['os_family'] == 'Archlinux' -%}
-            snort@{{ primary_network_interface | default('wls1') }}.service
-          {%- elif ansible_facts['os_family'] == 'Debian' -%}
-            snort-init.service
-          {%- else -%}
-            {{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service') }}
-          {%- endif -%}
-        masked: false
-      become: true
-      when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 54: SERVICE POSTURE PRE-REQUISITE ANCHORS
 # DESCRIPTION: Forces the systemd control engine to completely unmask target
