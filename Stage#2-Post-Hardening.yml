@@ -571,6 +571,32 @@
         - "item.dest != '/'"
 
 
+    - name: "SCAN | DYNAMIC | Unfiltered block controller partition isolation"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        ROOT_TARGET=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
+        
+        # Trace device tree to extract the raw physical parent block handle (e.g., sda)
+        if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
+            MAPPER_NAME=$(basename "${ROOT_TARGET}")
+            SLAVE_NAME=$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* 2>/dev/null | head -n1 | xargs basename)
+            MASTER_DISK=$(lsblk -dno PKNAME "/dev/${SLAVE_NAME}" | tr -d '[:space:]')
+        else
+            MASTER_DISK=$(lsblk -dno PKNAME "${ROOT_TARGET}" | tr -d '[:space:]')
+        fi
+        
+        # Fallback string stripping to isolate pure alphabet device letters
+        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "null" ]; then
+            MASTER_DISK=$(echo "${ROOT_TARGET}" | grep -oE '[a-z]+' | head -n1)
+        fi
+        
+        # Scan the total system layout for partitions containing match metrics for the master disk
+        lsblk -rno NAME,TYPE,MOUNTPOINTS | awk -v disk="${MASTER_DISK}" '$2 == "part" && $1 ~ disk { print "/dev/" $1 "," NF }' || true
+      args:
+        executable: /bin/bash
+      register: raw_block_partitions_output
+      changed_when: false
+
 # =============================================================================
 # BLOCK 19A: UNFILTERED AT-REST STORAGE DISCOVERY MATRIX
 # DESCRIPTION: Counts all system partitions, stores the value in a variable,
@@ -579,24 +605,32 @@
 
     - name: "SCAN | DYNAMIC | Unfiltered block controller partition isolation"
       ansible.builtin.shell: |
-        set -o pipefail
+        set -euo pipefail
         ROOT_TARGET=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
-        
-        # Isolate the core parent drive handle (e.g., sda) independent of child maps
+        MASTER_DISK=""
+
+        # Cleanly resolve master disk through sysfs device properties or direct mappings
         if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
             MAPPER_NAME=$(basename "${ROOT_TARGET}")
-            SLAVE_PATH=$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* 2>/dev/null | head -n1)
-            ROOT_PARENT=$(lsblk -dno PKNAME "${SLAVE_PATH}" | tr -d '[:space:]')
-        else
-            ROOT_PARENT=$(lsblk -dno PKNAME "${ROOT_TARGET}" | tr -d '[:space:]')
-        fi
-        
-        if [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ]; then
-            ROOT_PARENT=$(echo "${ROOT_TARGET}" | grep -oE '[a-z]+')
+            SLAVE_PATH=$(ls -d /sys/class/block/"${MAPPER_NAME}"/slaves/* 2>/dev/null | head -n1 || echo "")
+            if [ -n "${SLAVE_PATH}" ]; then
+                SLAVE_NAME=$(basename "${SLAVE_PATH}")
+                MASTER_DISK=$(lsblk -dno PKNAME "/dev/${SLAVE_NAME}" | tr -d '[:space:]' || echo "")
+            fi
         fi
 
-        # Pull ALL partitions belonging to the disk architecture cleanly
-        lsblk -rno NAME,TYPE,MOUNTPOINTS | awk -v rparent="${ROOT_PARENT}" '$2 == "part" && $1 ~ rparent { print "/dev/" $1 "," NF }' || true
+        # Fallback 1: Extract parent disk name directly using native lsblk lookups
+        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "null" ]; then
+            MASTER_DISK=$(lsblk -dno PKNAME "${ROOT_TARGET}" | tr -d '[:space:]' || echo "")
+        fi
+
+        # Fallback 2: Direct string regex stripping to isolate the alphabet root letters (e.g., sda)
+        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "null" ]; then
+            MASTER_DISK=$(echo "${ROOT_TARGET}" | grep -oE '[a-z]+' | head -n1 || echo "sda")
+        fi
+
+        # Extract ALL unmounted structural partitions belonging to that raw parent master disk
+        lsblk -rno NAME,TYPE,MOUNTPOINTS | awk -v disk="${MASTER_DISK}" '$2 == "part" && $1 ~ disk { print "/dev/" $1 "," NF }' || true
       args:
         executable: /bin/bash
       register: raw_block_partitions_output
@@ -626,7 +660,7 @@
       loop: "{{ all_discovered_partitions }}"
       register: candidate_vault_signatures_probe
       changed_when: false
-
+      
 # =============================================================================
 # BLOCK 20A: AUTONOMOUS LUKS2 ARGON2ID SCREENING ENGINE
 # DESCRIPTION: Evaluates gathered filesystem data tags, prints real-time status notices,
@@ -1668,8 +1702,8 @@
 
 # =============================================================================
 # BLOCK 51: HARDWARE-AWARE USBGUARD FIREWALLD PROFILE LAYOUTS
-# DESCRIPTION: Scans hardware tree, compiles user whitelists, scrubs bad characters
-#              from group lookups to fix service startup, and deploys configs.
+# DESCRIPTION: Automates real-time baseline hardware mapping policies, fixes 
+#              IPC allowed group access blocks, and secures configuration states.
 # =============================================================================
     - name: "USBGUARD | PRE-FLIGHT | Ensure secure backend logging target paths exist"
       ansible.builtin.file:
@@ -1683,18 +1717,16 @@
       ansible.builtin.shell: |
         set -euo pipefail
         mkdir -p /etc/usbguard
+        # Only execute rule mapping if file footprint is absent or empty to protect connected components
         if [ ! -s /etc/usbguard/rules.conf ]; then
-            usbguard generate-policy > /etc/usbguard/rules.conf
-        fi
-        if ! grep -q "match-all" /etc/usbguard/rules.conf; then
-            echo "allow with-interface match-all { bDeviceClass == 03 }" >> /etc/usbguard/rules.conf
+            /usr/bin/usbguard generate-policy > /etc/usbguard/rules.conf
         fi
         chmod 0600 /etc/usbguard/rules.conf
         chown root:root /etc/usbguard/rules.conf
       args:
         executable: /bin/bash
       register: usbguard_policy_generation
-      changed_when: true
+      changed_when: usbguard_policy_generation.rc == 0
 
     - name: "USBGUARD | CONFIGURATION | Enforce hardware-intelligent production configuration blueprints"
       ansible.builtin.copy:
@@ -1704,8 +1736,8 @@
         mode: '0600'
         content: |
           ImplicitPolicyTarget=block
-          PresentDevicePolicy=allow
-          PresentControllerPolicy=allow
+          PresentDevicePolicy=keep
+          PresentControllerPolicy=keep
           InsertedDevicePolicy=block
           RestoreControllerDeviceState=true
           AuditBackend=FileAudit
@@ -2865,6 +2897,24 @@
               echo "[✓] Dual killswitch locked. Interface isolated inside drop zone."
           }
       become: true
+
+    - name: "CONFIGURATION | SYSTEM ALIASES | Inject automatic shell sourcing triggers into user space"
+      ansible.builtin.blockinfile:
+        path: "{{ item }}"
+        marker: "# {mark} AUTOMATED ZERO-TRUST PERIMETER UTILITY HOOKS"
+        create: yes
+        owner: "{{ 'root' if item == '/root/.bashrc' else (primary_human_operator | default('vega') | trim) }}"
+        mode: '0644'
+        block: |
+          # Automatically source perimeter killswitch overrides if present on filesystem
+          if [ -f /etc/profile.d/firewall-killswitches.sh ]; then
+              . /etc/profile.d/firewall-killswitches.sh
+          fi
+      loop:
+        - "/root/.bashrc"
+        - "/home/{{ primary_human_operator | default('vega') | trim }}/.bashrc"
+      failed_when: false
+      when: "not ansible_check_mode"
 
 # =============================================================================
 # BLOCK 83: SNAPPER RECOVERY POSTURE TIMELINES
