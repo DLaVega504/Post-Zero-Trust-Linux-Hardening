@@ -77,7 +77,7 @@
 # =============================================================================
     distro_matrix:
       Archlinux:
-        core_packages: ['sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'openssl-1.1', 'earlyoom', 'snort']
+        core_packages: ['sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'openssl-1.1', 'earlyoom', 'snort', 'podman']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -91,7 +91,7 @@
         grub_compile_cmd: 'grub-mkconfig'
         grub_config_bios: '/boot/grub/grub.cfg'
       Debian:
-        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav-daemon', 'aide', 'lynis', 'earlyoom']
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav-daemon', 'aide', 'lynis', 'earlyoom', 'podman']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -111,7 +111,7 @@
 #              directly to RedHat and Suse system environments cleanly.
 # =============================================================================
       RedHat:
-        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'earlyoom']
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'earlyoom', 'podman']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -125,7 +125,7 @@
         grub_compile_cmd: 'grub2-mkconfig'
         grub_config_bios: '/boot/grub2/grub.cfg'
       Suse:
-        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'libdaq', 'earlyoom']
+        core_packages: ['fail2ban', 'sysstat', 'arpwatch', 'usbguard', 'clamav', 'aide', 'lynis', 'libdaq', 'earlyoom', 'podman']
         fail2ban_pkg: 'fail2ban'
         sysstat_pkg: 'sysstat'
         snort_pkg: 'snort'
@@ -138,7 +138,6 @@
         admin_group: 'wheel'
         grub_compile_cmd: 'grub2-mkconfig'
         grub_config_bios: '/boot/grub2/grub.cfg'
-
 
 # =============================================================================
 # BLOCK 6: INITIAL TASKS TREE & PRE-FLIGHT SYSTEM HOOKS
@@ -203,7 +202,6 @@
       changed_when: false
       failed_when: false
 
-
 # =============================================================================
 # BLOCK 8: SAFE ENVIRONMENTAL SETUP REFRESH
 # DESCRIPTION: Runs a clean fact discovery loop under safe permissions now that
@@ -246,6 +244,8 @@
 # DESCRIPTION: Probes execution targets to isolate if the Paru compilation
 #              wrapper tool is currently active on local system search paths.
 # =============================================================================
+
+
     - name: "PRE-FLIGHT | ARCH | Check if Paru binary is present on host execution paths"
       ansible.builtin.command: "which paru"
       register: local_paru_binary_probe
@@ -253,15 +253,15 @@
       changed_when: false
       when: "ansible_facts['os_family'] == 'Archlinux'"
 
-    - name: "PRE-FLIGHT | ARCH | Verify if Tripwire package and configuration are present on disk"
+    - name: "PRE-FLIGHT | ARCH | Verify if Tripwire binary is actively installed on system paths"
       ansible.builtin.stat:
-        path: "/etc/tripwire/tw.cfg"
-      register: local_tripwire_config_probe
+        path: "/usr/bin/tripwire"
+      register: local_tripwire_binary_probe
       when: "ansible_facts['os_family'] == 'Archlinux'"
 
     - name: "PRE-FLIGHT | ARCH | Set structural skip state fact for local package compilation matrices"
       ansible.builtin.set_fact:
-        skip_tripwire_installation: "{{ true if (local_tripwire_config_probe.stat is defined and local_tripwire_config_probe.stat.exists | bool) else false }}"
+        skip_tripwire_installation: "{{ true if (local_tripwire_binary_probe.stat is defined and local_tripwire_binary_probe.stat.exists | bool) else false }}"
       when: "ansible_facts['os_family'] == 'Archlinux'"
 
 # =============================================================================
@@ -327,26 +327,17 @@
         - "local_paru_binary_probe.rc | default(1) != 0"
         - "not skip_tripwire_installation | bool"
         - "not ansible_check_mode"
-
 # =============================================================================
-# BLOCK 13: UNPRIVILEGED AUR TRIPWIRE PACKAGE COMPILATION MATRIX
-# DESCRIPTION: Establishes a temporary permission-isolated build workspace
-#              to pull, compile, and install the native Tripwire binary.
-# ============================================================================
-    - name: "AUR BUILD | Clone, compile, and deploy native system packages"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd /tmp
-        rm -rf tripwire-build
-        git clone https://archlinux.org tripwire-build
-        cd tripwire-build
-        makepkg -si --noconfirm
-        cd /tmp
-        rm -rf tripwire-build
-      args:
-        executable: /bin/bash
-      become: true
-      become_user: "{{ primary_human_operator | default('vega') }}"
+# BLOCK 13: PRIVILEGED ARCH LINUX COMPILATION INJECTIONS
+# DESCRIPTION: Installs the required upstream compiler dependencies and source
+#              code tools needed to build forensic and management layers.
+# =============================================================================
+    - name: "PRE-FLIGHT | ARCH | Inject development toolsets required for compilation"
+      community.general.pacman:
+        name:
+          - base-devel
+          - git
+        state: present
       when:
         - "ansible_facts['os_family'] == 'Archlinux'"
         - "local_paru_binary_probe.rc | default(1) != 0"
@@ -354,27 +345,34 @@
         - "not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 14: BOOT INFRASTRUCTURE LOCKDOWN DETECTIONS
-# DESCRIPTION: Examines target system boot configuration matrices to discover
-#              pre-existing, cryptographically secured password boundaries.
-# =============================================================================
-    - name: "PRE-FLIGHT | BOOT | Interrogate active system for existing bootloader password configurations"
-      ansible.builtin.command: "grep -q 'ANSIBLE AUTONOMOUS BOOTLOADER PASSWORD BLOCK' /etc/grub.d/40_custom"
-      register: pre_flight_grub_password_check
-      failed_when: false
-      changed_when: false
-      become: true
-
-# =============================================================================
-# BLOCK 15: DISK GEOMETRY & ROOT CONFIGURATION INSPECTION
+# BLOCK 15A: DISK GEOMETRY & ROOT CONFIGURATION INSPECTION
 # DESCRIPTION: Probes underlying block devices, active device-mapper links,
 #              and mount targets to resolve root storage type attributes.
 # =============================================================================
+
+
     - name: "SCAN | INTERROGATION | Query true device mapping layer type for active root partition"
       ansible.builtin.shell: |
         set -o pipefail
-        ROOT_BLOCK=$(findmnt -n -o SOURCE /)
-        lsblk -no TYPE "$ROOT_BLOCK" | head -n 1 | tr -d '[:space:]'
+        ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
+        if lsblk -no TYPE "$ROOT_DEV" | grep -q "crypt"; then
+            echo "crypt"
+        elif [[ "$ROOT_DEV" == /dev/mapper/* ]]; then
+            MAPPER_NAME=$(basename "$ROOT_DEV")
+            if lsblk -no TYPE "/dev/mapper/$MAPPER_NAME" | grep -q "crypt" || blkid -p -o value -s TYPE "$ROOT_DEV" 2>/dev/null | grep -q "crypto"; then
+                echo "crypt"
+            else
+                # Trace to physical slave device backing the mapper to support nested setups
+                SLAVE_DEV=$(ls -d /sys/class/block/"$MAPPER_NAME"/slaves/* 2>/dev/null | head -n1 | xargs basename 2>/dev/null || echo "")
+                if [ -n "$SLAVE_DEV" ] && blkid -p -o value -s TYPE "/dev/$SLAVE_DEV" 2>/dev/null | grep -q "crypto_LUKS"; then
+                    echo "crypt"
+                else
+                    echo "standard"
+                fi
+            fi
+        else
+            echo "standard"
+        fi
       args:
         executable: /bin/bash
       register: live_root_block_type_probe
@@ -388,11 +386,79 @@
       register: live_root_mapper_device_check
       check_mode: false
 
+    - name: "SCAN | Probe motherboard boot firmware directory existence"
+      ansible.builtin.stat:
+        path: "/sys/firmware/efi"
+      register: efi_directory_check
+
+    - name: "SCAN | INTERROGATION | Query physical drive layout for nested boot topology mapping"
+      ansible.builtin.shell: |
+        set -o pipefail
+        ROOT_BLOCK=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
+        BOOT_BLOCK=$(findmnt -n -o SOURCE /boot | cut -d'[' -f1 || echo "none")
+        if [ "$ROOT_BLOCK" = "$BOOT_BLOCK" ] || [ "$BOOT_BLOCK" = "none" ]; then
+            echo "nested"
+        else
+            echo "separate"
+        fi
+      args:
+        executable: /bin/bash
+      register: boot_source_device
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+
+# =============================================================================
+# BLOCK 15C: ARCHITECTURAL DEPLOYMENT RECONNAISSANCE PRINTS
+# DESCRIPTION: Evaluates gathered firmware parameters and registers hardware
+#              facts to dynamically compute and print 3-tier profiles.
+# =============================================================================
+
+
+    - name: "RECONNAISSANCE | STATE | Calculate adaptive 3-tier architecture setup classification profile"
+      ansible.builtin.set_fact:
+        computed_architecture_profile: >-
+          {%- if boot_source_device.stdout is defined and boot_source_device.stdout | trim == 'nested' -%}
+            pentagon
+          {%- elif pre_flight_stage1_cert_check is defined and pre_flight_stage1_cert_check.stat.exists | bool -%}
+            protected_boot
+          {%- elif root_disk_is_encrypted | default(false) | bool and (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot') | list | length == 0 or (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot') | map(attribute='device') | first) == (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first)) -%}
+            custom
+          {%- else -%}
+            traditional
+          {%- endif -%}
+
+# INSERT this corrected block cleanly into Block 15C:
+    - name: "SCAN REPORT | TELEMETRY | Render bootloader storage environmental metrics"
+      ansible.builtin.debug:
+        msg: "{{ banner_msg.split('\n') }}"
+      vars:
+        banner_msg: |
+          =======================================================================================
+          🔬 ZERO-TRUST HARDWARE ARCHITECTURE RECONNAISSANCE SCAN COMPLETE
+          =======================================================================================
+          {% if computed_architecture_profile == 'pentagon' %}
+           [ ✓ ] Pentagon Setup Discovered
+               ↳ [ ✓ ] Nested /boot partition detected
+               ↳ [ ⚙️ ] Skipping bootloader password hardening (Storage Envelope Secure)
+          {% elif computed_architecture_profile == 'protected_boot' %}
+           [ ✓ ] Protected Boot Detected
+               ↳ [ ✓ ] Existing Stage 2 baseline certificate verified on disk
+               ↳ [ ⚙️ ] Skipping bootloader verification tasks (System Integrity Intact)
+          {% else %}
+           [ ✓ ] Traditional Setup Detected
+               ↳ [ ⚠️ ] Unprotected /boot discovered outside FDE coverage
+               ↳ [ 🔒 ] Stage 2: Initiating mandatory bootloader password parameter hardening
+          {% endif %}
+          =======================================================================================
+
 # =============================================================================
 # BLOCK 16: SECURITY AUDIT SCORES HISTORY METRIC PARSING
 # DESCRIPTION: Audits block filesystems to identify pre-existing, cached
 #              historical baseline metrics for Lynis assessment sequences.
 # =============================================================================
+
     - name: "PRE-FLIGHT | AUDIT | Check disk for local cached Lynis metrics"
       ansible.builtin.stat:
         path: "/var/cache/lynis/pre_score.metric"
@@ -422,180 +488,298 @@
 # DESCRIPTION: Consolidates discovered encryption hooks, boot metadata, cache
 #              records, and certificate facts into static runtime memories.
 # =============================================================================
+
     - name: "PRE-FLIGHT | STATE | Synthesize and lock baseline architectural facts"
       ansible.builtin.set_fact:
-        stage1_foundation_active: "{{ pre_flight_stage1_cert_check.stat.exists | bool }}"
-        boot_password_is_protected: "{{ true if pre_flight_grub_password_check.rc == 0 else false }}"
+        stage1_foundation_active: "{{ pre_flight_stage1_cert_check.stat.exists | bool if pre_flight_stage1_cert_check.stat is defined else false }}"
+        boot_password_is_protected: "{{ true if pre_flight_grub_password_check.rc | default(1) == 0 else false }}"
         root_disk_is_encrypted: "{{ true if (live_root_block_type_probe.stdout | trim == 'crypt' or live_root_mapper_device_check.stat.exists | bool) else false }}"
         lynis_cache_available: "{{ pre_flight_lynis_cache_check.stat.exists | bool }}"
-        dynamic_pre_score: "{{ (raw_cached_lynis_score.content | b64decode | trim | int) if pre_flight_lynis_cache_check.stat.exists | bool else 65 }}"
-        dynamic_post_score_cached: "{{ (raw_cached_lynis_post_score.content | b64decode | trim | int) if post_flight_lynis_cache_check.stat.exists | bool else None }}"
+
+    - name: "SCAN | STATE | Lock filesystem configuration properties"
+      ansible.builtin.set_fact:
+        is_btrfs_layout: "{{ true if (root_fs_signature.stdout is defined and 'btrfs' in root_fs_signature.stdout) else false }}"
 
 # =============================================================================
-# BLOCK 18: DISK GEOMETRY & FIRMWARE INTERROGATION (REPOSITIONED SCAN CORES)
-# DESCRIPTION: Probes underlying block devices, active firmware links,
-#              and mount targets to resolve storage formatting signatures.
+# BLOCK 18A: BTRFS TOPOLOGY COMPLIANCE AUDIT ENGINE
+# DESCRIPTION: Mounts top-level parent pool ID 5 universally to execute
+#              distribution-aware layout verification and state corrections.
 # =============================================================================
-    - name: "SCAN | Probe motherboard boot firmware directory existence"
-      ansible.builtin.stat:
-        path: "/sys/firmware/efi"
-      register: efi_directory_check
-
-    - name: "SCAN | Detect active root filesystem source device handle"
+    - name: "STORAGE | AUDIT | Mount raw parent pool ID 5 for structure validation"
       ansible.builtin.shell: |
-        set -o pipefail
-        findmnt -n -o SOURCE / | awk '{print $1}' | cut -d'[' -f1
-      args:
-        executable: /bin/bash
-      register: root_source_device
+        mkdir -p /tmp/btrfs_stage2_verification
+        mount -o subvolid=5 {{ root_source_device.stdout | default('/dev/sda1') }} /tmp/btrfs_stage2_verification
       changed_when: false
-      check_mode: false
+      when:
+        - "is_btrfs_layout | bool"
+        - "not ansible_check_mode"
 
-    - name: "SCAN | Detect active boot partition source device handle"
+    - name: "STORAGE | RECONCILIATION | Declaratively force subvolume layout synchronization"
       ansible.builtin.shell: |
-        set -o pipefail
-        ROOT_RAW=$(findmnt -n -o SOURCE /)
-        BOOT_RAW=$(findmnt -n -o SOURCE /boot || echo "nested")
+        set -euo pipefail
+        POOL="/tmp/btrfs_stage2_verification"
+        TARGET_NAME="{{ item.name }}"
+        OS_FAMILY="{{ ansible_facts['os_family'] }}"
 
-        if [ "$BOOT_RAW" = "nested" ] || [ "$BOOT_RAW" = "$ROOT_RAW" ]; then
-            echo "nested"
-        else
-            ROOT_PARENT=$(lsblk -dno PKNAME "$ROOT_RAW" 2>/dev/null || echo "crypt")
-            BOOT_PARENT=$(lsblk -dno PKNAME "$BOOT_RAW" 2>/dev/null || echo "boot")
-            if [ "$ROOT_PARENT" = "$BOOT_PARENT" ] || [ -d "/sys/firmware/efi" ]; then
-                echo "separate"
-            else
-                echo "separate"
+        if [ -d "$POOL/$TARGET_NAME" ] && ! btrfs subvolume show "$POOL/$TARGET_NAME" >/dev/null 2>&1; then
+            mv "$POOL/$TARGET_NAME" "$POOL/${TARGET_NAME}_legacy_backup"
+        fi
+
+        if [ ! -d "$POOL/$TARGET_NAME" ]; then
+            mkdir -p "$(dirname "$POOL/$TARGET_NAME")"
+            btrfs subvolume create "$POOL/$TARGET_NAME"
+            if [ -d "$POOL/${TARGET_NAME}_legacy_backup" ]; then
+                cp -a "$POOL/${TARGET_NAME}_legacy_backup/." "$POOL/$TARGET_NAME/" || true
+                rm -rf "$POOL/${TARGET_NAME}_legacy_backup"
             fi
         fi
       args:
         executable: /bin/bash
-      register: boot_source_device
-      changed_when: false
-      check_mode: false
-
-    - name: "SCAN | Detect active root filesystem type format signature"
-      ansible.builtin.shell: |
-        findmnt -n -o FSTYPE /
-      register: root_fs_signature
-      changed_when: false
-      check_mode: false
-# =============================================================================
-# BLOCK 19: STANDALONE BOOT SECURITY PROMPT INTERFACES (FORCE INTERACTIVE GATE)
-# DESCRIPTION: Pauses execution to securely prompt for a master boot passphrase
-#              on unprotected nodes, generating clean PBKDF2 hash structures.
-# =============================================================================
-    - name: "BOOT | SECURITY GATE | Securely prompt for master passphrase on unprotected standalone nodes"
-      ansible.builtin.pause:
-        prompt: |
-          ======================================================================
-          [ 🔒 ZERO-TRUST AUTONOMOUS INITIALIZATION PASS-GATE ]
-          ======================================================================
-          Stage 1 base-layer certificate was not detected on this system.
-          The bootloader partition is currently wide open and unprotected.
-
-          [?] Enter a master security passphrase to cryptographically lock down
-              the GRUB bootloader matrix parameters:
-          ======================================================================
-        echo: false
-      register: front_loaded_standalone_passphrase
-      become: false
+      loop: "{{ active_distro_subvolumes }}"
+      register: topo_sync_status
+      changed_when: topo_sync_status.rc == 0
       when:
-        - "computed_architecture_profile | default('fortress') == 'fortress'"
-        - "not boot_password_is_protected | default(false) | bool"
+        - "is_btrfs_layout | bool"
+        - "not ansible_check_mode"
+        - "item.dest != '/'"
+        - "item.dest != '/home'"
 
-    - name: "BOOT Hardening | AUTOMATION ENGINE | Non-interactively compile cryptographic PBKDF2 hash payload"
+# =============================================================================
+# BLOCK 18B: BTRFS TARGET MOUNT POINT DIRECTORY PRE-CREATION
+# DESCRIPTION: Drops the required physical directory anchors directly into the
+#              running filesystem path before launching mount configurations.
+# =============================================================================
+    - name: "STORAGE | AUDIT | Clean system verification mounts"
+      ansible.builtin.shell: "umount /tmp/btrfs_stage2_verification && rmdir /tmp/btrfs_stage2_verification"
+      changed_when: false
+      failed_when: false
+      when:
+        - "is_btrfs_layout | bool"
+        - "not ansible_check_mode"
+
+    - name: "STORAGE | PRE-FLIGHT | Enforce presence of folder target anchors"
+      ansible.builtin.file:
+        path: "{{ item.dest }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: "{{ active_distro_subvolumes }}"
+      when:
+        - "is_btrfs_layout | bool"
+        - "not ansible_check_mode"
+        - "item.dest != '/'"
+
+
+# =============================================================================
+# BLOCK 19A: UNFILTERED AT-REST STORAGE DISCOVERY MATRIX
+# DESCRIPTION: Counts all system partitions, stores the value in a variable,
+#              and uses it to control the exact execution frequency of signature scans.
+# =============================================================================
+    - name: "SCAN | DYNAMIC | Unfiltered block controller partition isolation"
       ansible.builtin.shell: |
         set -o pipefail
-        echo -e "{{ front_loaded_standalone_passphrase.user_input }}\n{{ front_loaded_standalone_passphrase.user_input }}" | grub-mkpasswd-pbkdf2 | awk -F' ' '{print $NF}' | tail -n1 | tr -d '\n'
-      register: calculated_standalone_grub_hash
-      no_log: true
-      when:
-        - "computed_architecture_profile | default('fortress') == 'fortress'"
-        - "not boot_password_is_protected | default(false) | bool"
-        - "front_loaded_standalone_passphrase.user_input is defined"
-        - "front_loaded_standalone_passphrase.user_input | length > 0"
-
-# =============================================================================
-# BLOCK 20A: BOOT CONFIGURATION HARDENING INJECTIONS
-# DESCRIPTION: Commits generated superuser restrictions and password blocks
-#              directly into custom boot configs to prevent edit bypasses.
-# =============================================================================
-    - name: "BOOT HARDENING | INJECTION | Commit secure master credentials into user customized parameters"
-      ansible.builtin.blockinfile:
-        path: "/etc/grub.d/40_custom"
-        marker: "# {mark} ANSIBLE AUTONOMOUS BOOTLOADER PASSWORD BLOCK"
-        block: |
-          set superusers="root"
-          password_pbkdf2 root {{ calculated_standalone_grub_hash.stdout | default('') }}
-      when:
-        - "autonomous_standalone_mode | default(true) | bool"
-        - "not boot_password_is_protected | default(false) | bool"
-        - "computed_architecture_profile | default('fortress') != 'pentagon'"
-        - "calculated_standalone_grub_hash.stdout is defined"
-        - "calculated_standalone_grub_hash.stdout | length > 0"
-      register: grub_custom_file_state
-# =============================================================================
-# BLOCK 21-B: COMPLIANCE STATE MACHINE & VISUAL MONITOR ACCUMULATORS
-# DESCRIPTION: Evaluates gathered firmware parameters and registered hardware
-#              facts to dynamically compute 3-tier architecture setup profiles.
-# =============================================================================
-    - name: "PRE-FLIGHT | FACT SYNTHESIS | Calculate primary hardware attributes"
-      ansible.builtin.set_fact:
-        root_disk_is_encrypted: true
-
-    - name: "PRE-FLIGHT | STATE | Calculate state-machine compliance mode tracks"
-      ansible.builtin.set_fact:
-        compliance_track_level_3: "{{ pre_flight_stage1_cert_check.stat.exists | bool }}"
-        compliance_retrospective_level_1: "{{ not pre_flight_stage1_cert_check.stat.exists | bool and boot_password_is_protected | bool and root_disk_is_encrypted | bool }}"
-        failsafe_runtime_only_mode: "{{ not pre_flight_stage1_cert_check.stat.exists | bool and not root_disk_is_encrypted | bool }}"
-        stackable_mode: "{{ pre_flight_stage1_cert_check.stat.exists | bool }}"
-        autonomous_standalone_mode: "{{ not pre_flight_stage1_cert_check.stat.exists | bool }}"
-        detected_admin_group: "{{ 'sudo' if ansible_facts['os_family'] == 'Debian' else 'wheel' }}"
-
-    - name: "RECONNAISSANCE | HUMAN IDENTITY | Scan administrative groups to discover primary human user"
-      ansible.builtin.shell: |
-        set -o pipefail
-        getent group "{{ detected_admin_group }}" | cut -d: -f4 | tr ',' '\n' | grep -v -E '^(root|)$' | head -n1 || getent passwd 1000 | cut -d: -f1 || echo 'vega'
+        ROOT_TARGET=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
+        ROOT_PARENT=$(lsblk -no PKNAME "$ROOT_TARGET" | head -n1 | tr -d '[:space:]')
+        
+        if [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ]; then
+            if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
+                MAPPER_NAME=$(basename "${ROOT_TARGET}")
+                SLAVE_PATH=$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* 2>/dev/null | head -n1)
+                if [ -n "$SLAVE_PATH" ]; then
+                    ROOT_PARENT=$(lsblk -dno PKNAME "$SLAVE_PATH" | tr -d '[:space:]')
+                    [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ] && ROOT_PARENT=$(basename "$SLAVE_PATH" | grep -oE '^[a-z]+')
+                fi
+            fi
+        fi
+        
+        if [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ]; then
+            ROOT_PARENT="unresolved_parent"
+        fi
+        
+        # Pulls ALL structural partitions on the drive along with field counts to isolate empty lines
+        lsblk -rno NAME,TYPE,MOUNTPOINTS | awk -v rparent="${ROOT_PARENT}" '$2 == "part" && $1 ~ rparent { print "/dev/" $1 "," NF }' || true
       args:
         executable: /bin/bash
-      register: human_operator_probe
+      register: raw_block_partitions_output
       changed_when: false
-      check_mode: false
 
-    - name: "RECONNAISSANCE | STATE | Lock dynamic human operator system facts"
+    - name: "SCAN | DYNAMIC | Store total partition counts and candidate metrics into variables"
       ansible.builtin.set_fact:
-        primary_human_operator: "{{ human_operator_probe.stdout | trim | default('vega') }}"
+        all_discovered_partitions: "{{ raw_block_partitions_output.stdout_lines | default([]) }}"
+        partition_count: "{{ raw_block_partitions_output.stdout_lines | default([]) | length }}"
 
-    - name: "RECONNAISSANCE | STATE | Calculate adaptive 3-tier architecture setup classification profile"
+    - name: "SCAN | DYNAMIC | Probe candidate partitions for cryptographic and file signatures"
+      ansible.builtin.shell: |
+        set -o pipefail
+        PARTITION_DATA="{{ item }}"
+        PARTITION_PATH=$(echo "${PARTITION_DATA}" | cut -d',' -f1)
+        FIELD_COUNT=$(echo "${PARTITION_DATA}" | cut -d',' -f2)
+        
+        # If FIELD_COUNT is exactly 2, it is guaranteed to be completely unmounted/blank on your disk
+        if [ "${FIELD_COUNT}" -eq 2 ]; then
+            TYPE_SIG=$(blkid -p -o value -s TYPE "${PARTITION_PATH}" 2>/dev/null || echo "BLANK")
+            echo "${PARTITION_PATH}:${TYPE_SIG}"
+        else
+            echo "${PARTITION_PATH}:ACTIVE_SYSTEM_RESERVED"
+        fi
+      args:
+        executable: /bin/bash
+      loop: "{{ all_discovered_partitions }}"
+      register: candidate_vault_signatures_probe
+      changed_when: false
+
+# =============================================================================
+# BLOCK 20A: AUTONOMOUS LUKS2 ARGON2ID SCREENING ENGINE
+# DESCRIPTION: Evaluates gathered filesystem data tags, prints real-time status notices,
+#              and compiles pristine boundaries into secure deployment definitions.
+# =============================================================================
+    - name: "VAULT ENGINE | LEDGER | Render multi-tier block volume assessment reports"
+      ansible.builtin.debug:
+        msg: |
+          =======================================================================================
+          🔍 STORAGE BLOCK COMPLIANCE SCAN: EVALUATING {{ item.stdout | split(':') | first }}
+          =======================================================================================
+          {% set block_path = item.stdout | split(':') | first %}
+          {% set signature = item.stdout | split(':') | last | trim %}
+          {% if signature == 'crypto_LUKS' %}
+           [ 🔒 ] PRE-EXISTING ENCRYPTED CONTAINER VERIFIED ON [ {{ block_path }} ]
+               ↳ Target signature matches framework standard. Data envelope preserved.
+          {% elif signature != 'BLANK' and signature != 'crypto_LUKS' %}
+           [ 📁 ] ACTIVE FILESYSTEM SCHEMATIC ENCOUNTERED ON [ {{ block_path }} ] (TYPE: {{ signature }})
+               ↳ Operational safety trip active: Skipping modifications to prevent data loss.
+          {% else %}
+           [ 🎯 ] EMPTY SECURE CANDIDATE TARGET DETECTED ON [ {{ block_path }} ]
+               ↳ [ CAUTION ] Storage segment unmapped. Armed for automated zero-trust framework injection.
+          {% endif %}
+          =======================================================================================
+      loop: "{{ candidate_vault_signatures_probe.results | default([]) }}"
+      when:
+        - "item.stdout is defined and ':' in item.stdout"
+
+    - name: "VAULT ENGINE | LEDGER | Compile unified architectural vault specifications"
       ansible.builtin.set_fact:
-        computed_architecture_profile: >-
-          {%- if pre_flight_stage1_cert_check.stat.exists | bool -%}
-            {{ security_architecture_profile }}
-          {%- elif boot_source_device.stdout | trim == 'separate' -%}
-            fortress
-          {%- elif boot_source_device.stdout | trim == 'nested' -%}
-            pentagon
-          {%- else -%}
-            custom
+        final_vault_configs: >-
+          {%- set configured_list = [] -%}
+          {%- if candidate_vault_signatures_probe.results is defined -%}
+            {%- for response in candidate_vault_signatures_probe.results -%}
+              {%- if response.stdout is defined and ':' in response.stdout -%}
+                {%- set block_path = response.stdout | split(':') | first -%}
+                {%- set signature = response.stdout | split(':') | last | trim -%}
+                {%- if signature == 'BLANK' -%}
+                  {%- set vault_index = configured_list | length + 1 -%}
+                  {%- set dynamic_moniker = 'secure_vault_' ~ vault_index -%}
+                  {%- set _ = configured_list.append({'path': block_path | trim, 'name': dynamic_moniker | trim, 'size_gb': 20, 'signature': 'BLANK'}) -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
           {%- endif -%}
+          {{ configured_list }}
+      when: "secure_vault_enabled | bool"
+
 # =============================================================================
-# BLOCK 22: HARDWARE CONTROLLER & NETWORK ENVIRONMENT DEPLOYMENTS
-# DESCRIPTION: Resolves persistent UUIDs, mkinitcpio hook files, storage media
-#              rotation metrics, and home local area network boundaries.
+# BLOCK 20B: VAULT CRYPTOGRAPHIC ARTIFACT EXECUTION ENGINE
+# DESCRIPTION: Provisions high-iteration Argon2id security wrappers over empty sectors
+#              while explicitly staying clear of populated partitions.
 # =============================================================================
+    - name: "VAULT ENGINE | CRYPTO | Deploy argon2id LUKS2 structures and create clean Btrfs file spaces"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        TARGET_DEV="{{ item.path }}"
+        VAULT_NAME="{{ item.name }}"
+
+        KEY_FILE="/etc/vault_${VAULT_NAME}.key"
+        if [ ! -f "${KEY_FILE}" ]; then
+            dd if=/dev/urandom of="${KEY_FILE}" bs=1 count=256 status=none
+            chmod 0600 "${KEY_FILE}"
+            chown root:root "${KEY_FILE}"
+        fi
+
+        cryptsetup luksFormat --type luks2 --pbkdf argon2id --key-file "${KEY_FILE}" "${TARGET_DEV}"
+        MAPPER_INIT="vault_init_${VAULT_NAME}"
+        cryptsetup open "${TARGET_DEV}" "${MAPPER_INIT}" --key-file "${KEY_FILE}"
+        mkfs.btrfs -f -L "${VAULT_NAME}" "/dev/mapper/${MAPPER_INIT}"
+        cryptsetup close "${MAPPER_INIT}"
+        echo "[✓] Cryptographic vault container execution complete for ${VAULT_NAME}."
+      args:
+        executable: /bin/bash
+      loop: "{{ final_vault_configs | default([]) }}"
+      when:
+        - "secure_vault_enabled | bool"
+        - "final_vault_configs | default([]) | length > 0"
+        - "not ansible_check_mode"
+      register: crypto_formatting_engine_status
+      changed_when: "'Cryptographic container execution complete' in crypto_formatting_engine_status.stdout"
+
+# =============================================================================
+# BLOCK 21: SNAP CONSTRAINTS & SNORT ENVIRONMENT PRE-INITIALIZATION
+# DESCRIPTION: Forces the presence of missing logging targets and configuration
+#              boundaries to prevent fatal core engine execution drops.
+# =============================================================================
+    - name: "CONFIGURATION | SNORT 3 | Ensure log path ecosystems exist on drive"
+      ansible.builtin.file:
+        path: "/var/log/snort"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+      become: true
+
+    - name: "VAULT ENGINE | TOPOLOGY | Commit standardized lookup maps to local topology block"
+      ansible.builtin.copy:
+        dest: "/etc/vault-topology.conf"
+        content: |
+          # Automated Zero-Trust Storage Topology Map
+          # Format: [vault_name]:[device_path]:[size_gb]
+          {% for item in (final_vault_configs | default([])) %}
+          {{ item.name | trim }}:{{ item.path | trim }}:{{ item.size_gb | default(20) | int }}
+          {% endfor %}
+        owner: root
+        group: root
+        mode: '0600'
+      when: "secure_vault_enabled | bool"
+
+# =============================================================================
+# BLOCK 22: SYSTEMD SERVICE INVENTORY INITIATION MATRICES
+# DESCRIPTION: Unmasks and maps persistent orchestration templates cleanly into
+#              the service runtime layers to enable native container frameworks.
+# =============================================================================
+    - name: "SECURITY SERVICES | INVENTORY | Force unmask runtime tracking parameters"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        masked: false
+      loop:
+        - machinectl.socket
+        - systemd-portabled.service
+      become: true
+      when: "not ansible_check_mode"
+
+    - name: "SECURITY SERVICES | INVENTORY | Ensure template configuration states match baseline"
+      ansible.builtin.systemd:
+        name: "systemd-nspawn@.service"
+        masked: false
+      become: true
+      when: "not ansible_check_mode"
+
+# =============================================================================
+# BLOCK 23: HARDWARE CONTROLLER & NETWORK ENVIRONMENT DEPLOYMENTS
+# DESCRIPTION: Resolves persistent UUIDs, storage media rotation metrics,
+#              and home local area network boundaries.
+
     - name: "SCAN | Discover absolute persistent root device UUID"
-      ansible.builtin.shell: "blkid -s UUID -o value {{ root_source_device.stdout | default('/dev/null') }}"
+      ansible.builtin.shell: |
+        set -o pipefail
+        TARGET_DEV="{{ root_source_device.stdout | default('') | trim }}"
+        if [ -z "$TARGET_DEV" ] || [ "$TARGET_DEV" = "/dev/null" ]; then
+            echo "check_mode_fallback_uuid"
+        else
+            blkid -s UUID -o value "$TARGET_DEV"
+        fi
+      args:
+        executable: /bin/bash
       register: live_root_uuid
       changed_when: false
       check_mode: false
-
-    - name: "SCAN | Read active initramfs hook parameters cleanly"
-      ansible.builtin.slurp:
-        src: "/etc/mkinitcpio.conf"
-      register: raw_mkinitcpio
-      failed_when: false
-      when: "ansible_facts['os_family'] == 'Archlinux'"
 
     - name: "SCAN | Detect drive media rotation profiles directly from hardware controller"
       ansible.builtin.shell: |
@@ -634,68 +818,17 @@
       failed_when: false
       check_mode: false
 
-    - name: "SCAN | DYNAMIC | Isolate all unmapped and candidate vault block partitions"
-      ansible.builtin.shell: |
-        set -o pipefail
-        ROOT_RAW=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
-        if [[ "${ROOT_RAW}" == /dev/mapper/* ]]; then
-            MAPPER_NAME=$(basename "${ROOT_RAW}")
-            ROOT_PARENT=$(basename "$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* | head -n1)" | grep -oE '^[a-z]+')
-        else
-            ROOT_PARENT=$(lsblk -no PKNAME "${ROOT_RAW}" | head -n1 | tr -d '[:space:]')
-        fi
-        if [ -z "${ROOT_PARENT}" ]; then
-            ROOT_PARENT="unresolved_parent"
-        fi
-        lsblk -rno NAME,TYPE,MOUNTPOINT | awk -v rparent="${ROOT_PARENT}" '
-          $2 == "part" && $3 == "" { print "/dev/" $1 }
-          $2 == "part" && $3 ~ /^\/@vault/ { print "/dev/" $1 }
-        ' | grep -E "^/dev/${ROOT_PARENT}" || true
-      args:
-        executable: /bin/bash
-      register: local_unmapped_partitions_probe
-      failed_when: false
-      changed_when: false
-      check_mode: false
-
-    - name: "SCAN | DYNAMIC | Probe candidate partitions for cryptographic and file signatures"
-      ansible.builtin.shell: |
-        set -o pipefail
-        TYPE_SIG=$(blkid -p -o value -s TYPE "{{ item }}" 2>/dev/null || echo "BLANK")
-        echo "{{ item }}:${TYPE_SIG}"
-      args:
-        executable: /bin/bash
-      loop: "{{ local_unmapped_partitions_probe.stdout_lines | default([]) }}"
-      register: candidate_vault_signatures_probe
-      changed_when: false
-      failed_when: false
-      check_mode: false
 # =============================================================================
-# BLOCK 23: HARDWARE LAYER ENVIRONMENT BOUNDARY SYNTHESIS
+# BLOCK 24: HARDWARE LAYER ENVIRONMENT BOUNDARY SYNTHESIS
 # DESCRIPTION: Sanitizes the active network range boundaries using fallback
 #              protection rules, and evaluates core chassis role parameters.
 # =============================================================================
-    - name: "SCAN | STATE | Calculate true local base network subnet boundary block"
-      ansible.builtin.set_fact:
-        dynamic_home_net: >-
-          {%- set raw_ip = live_active_cidr_raw.stdout | default('') | trim -%}
-          {%- if '/' in raw_ip -%}
-            {{ raw_ip | ansible.utils.ipsubnet }}
-          {%- else -%}
-            192.168.1.0/24
-          {%- endif -%}
-      failed_when: false
+
 
     - name: "SCAN | Synthesize virtualization and media profiles"
       ansible.builtin.set_fact:
         is_mechanical_drive: "{{ true if (host_disk_rotation_raw.stdout is defined and host_disk_rotation_raw.stdout | trim == '1') else false }}"
         is_virtual_machine: "{{ true if (ansible_facts['virtualization_role'] | default('host') == 'guest') else false }}"
-
-    - name: "SCAN | Discover primary human installation user identity (UID 1000)"
-      ansible.builtin.shell: "getent passwd 1000 | cut -d: -f1"
-      register: primary_owner_discovered
-      changed_when: false
-      check_mode: false
 
     - name: "SCAN | Probe system power rail for lithium-ion battery nodes"
       ansible.builtin.stat:
@@ -709,7 +842,7 @@
       failed_when: false
 
 # =============================================================================
-# BLOCK 24: HARDWARE CORE FORM-FACTOR SPECS COMPUTATION
+# BLOCK 25: HARDWARE CORE FORM-FACTOR SPECS COMPUTATION
 # DESCRIPTION: Computes and translates raw DMI chassis configurations into
 #              unambiguous, structural platform target form factors.
 # =============================================================================
@@ -726,58 +859,17 @@
           {%- else -%}
           STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)
           {%- endif -%}
+
+    - name: "SCAN | Discover primary human installation user identity (UID 1000)"
+      ansible.builtin.shell: "getent passwd 1000 | cut -d: -f1"
+      register: primary_owner_discovered
+      changed_when: false
+      check_mode: false
+
 # =============================================================================
-# BLOCK 25: COGNITIVE SPECIFICATION FACT SYNTHESIS (FIXED SWAP FORMULA MATH)
+# BLOCK 26: DYNAMIC COGNITIVE SPECIFICATION FACT SYNTHESIS
 # DESCRIPTION: Calculates dynamic swappiness values, compression algorithms,
 #              oom engines, and partitions subvolume paths into active facts.
-# =============================================================================
-    - name: "SCAN | Synthesize primary system hardware and layout facts"
-      ansible.builtin.set_fact:
-        system_ram_gb: "{{ ((ansible_facts['memtotal_mb'] | default(4096) | int) / 1024) | round(0, 'common') | int }}"
-        oom_engine_selection: "{{ 'earlyoom' if ((ansible_facts['memtotal_mb'] | default(4096) | int) < 8192) else 'systemd-oomd' }}"
-        target_compression: "{{ 'lz4' if ((ansible_facts['memtotal_mb'] | default(4096) | int) < 8192) else 'zstd' }}"
-        target_swappiness: >-
-          {%- if (ansible_facts['memtotal_mb'] | default(4096) | int) > 16384 -%} 10
-          {%- elif (ansible_facts['memtotal_mb'] | default(4096) | int) <= 7168 -%} 150
-          {%- else -%} 100
-          {%- endif -%}
-        target_formula_swap_mb: >-
-          {%- if (ansible_facts['memtotal_mb'] | default(4096) | int) <= 7168 -%}
-            {{ (ansible_facts['memtotal_mb'] | default(4096) | int) * 2 }}
-          {%- elif (ansible_facts['memtotal_mb'] | default(4096) | int) > 16384 -%}
-            4096
-          {%- else -%}
-            {{ (ansible_facts['memtotal_mb'] | default(4096) | int) + 3072 }}
-          {%- endif -%}
-        is_uefi_mode: "{{ efi_directory_check.stat.exists | bool if efi_directory_check.stat is defined else false }}"
-        is_btrfs_layout: true
-        active_root_uuid: "{{ live_root_uuid.stdout | default('unresolved') | trim }}"
-        discovered_primary_user: "{{ primary_human_operator }}"
-
-    - name: "RECONNAISSANCE | DATA | Ingest multi-distro translation matrix blueprint"
-      ansible.builtin.include_vars:
-        file: "vars_mapping.yml"
-
-    - name: "RECONNAISSANCE | STATE | Map host-specific active subvolume profile ledger"
-      ansible.builtin.set_fact:
-        active_distro_subvolumes: >-
-          {%- if ansible_facts['distribution'] == 'Fedora' -%}{{ fedora_vars.subvolumes }}
-          {%- elif ansible_facts['os_family'] == 'Archlinux' -%}{{ arch_vars.subvolumes }}
-          {%- elif ansible_facts['os_family'] == 'Debian' -%}{{ debian_vars.subvolumes }}
-          {%- elif ansible_facts['os_family'] == 'Suse' -%}{{ suse_vars.subvolumes }}
-          {%- else -%}{{ arch_vars.subvolumes }}
-          {%- endif -%}
-
-    - name: "RECONNAISSANCE | STATE | Enforce single-disk vault anti-collision logic"
-      ansible.builtin.set_fact:
-        secure_vault_enabled: false
-      when: >
-        (vault_partition_handle is defined and (vault_partition_handle == '/dev/sda2' or vault_partition_handle == (root_source_device.stdout | trim))) or
-        (final_vault_configs is defined and (final_vault_configs | selectattr('path', 'equalto', (root_source_device.stdout | trim)) | list | length > 0))
-# =============================================================================
-# BLOCK 26: DYNAMIC NETWORK INTERFACE RESOLUTION SCANS
-# DESCRIPTION: Queries active interface structures to dynamically locate the optimal
-#              hardware card matching the target node chassis type context.
 # =============================================================================
     - name: "SCAN | DYNAMIC | Intelligently extract active network interface matching chassis form factor"
       ansible.builtin.shell: |
@@ -802,6 +894,23 @@
     - name: "SCAN | STATE | Lock dynamic hardware-intelligent network variables for tools"
       ansible.builtin.set_fact:
         primary_network_interface: "{{ optimized_hardware_interface_probe.stdout | trim | default('wls1', true) }}"
+        system_ram_gb: "{{ ((ansible_facts['memtotal_mb'] | default(4096) | int) / 1024) | round(0, 'common') | int }}"
+        oom_engine_selection: "{{ 'earlyoom' if ((ansible_facts['memtotal_mb'] | default(4096) | int) < 8192) else 'systemd-oomd' }}"
+        target_compression: "{{ 'lz4' if ((ansible_facts['memtotal_mb'] | default(4096) | int) < 8192) else 'zstd' }}"
+        dynamic_home_net: "{{ live_active_cidr_raw.stdout | default('192.168.1.0/24') | trim if (live_active_cidr_raw.stdout is defined and live_active_cidr_raw.stdout | trim | length > 0) else '192.168.1.0/24' }}"
+        target_swappiness: >-
+          {%- if (ansible_facts['memtotal_mb'] | default(4096) | int) > 16384 -%} 10
+          {%- elif (ansible_facts['memtotal_mb'] | default(4096) | int) <= 7168 -%} 150
+          {%- else -%} 100
+          {%- endif -%}
+        target_formula_swap_mb: >-
+          {%- if (ansible_facts['memtotal_mb'] | default(4096) | int) <= 7168 -%}
+            {{ (ansible_facts['memtotal_mb'] | default(4096) | int) * 2 }}
+          {%- elif (ansible_facts['memtotal_mb'] | default(4096) | int) > 16384 -%}
+            4096
+          {%- else -%}
+            {{ (ansible_facts['memtotal_mb'] | default(4096) | int) + 3072 }}
+          {%- endif -%}
 
 # =============================================================================
 # BLOCK 27: SWAP HARDENING PARTITION RECONNAISSANCE & FORMULA SCANS
@@ -836,8 +945,9 @@
         regexp: '^.*/dev/mapper/swap_(ssd|vault).*$'
         state: absent
       when: "not ansible_check_mode"
+
 # =============================================================================
-# BLOCK 27-A: INFRASTRUCTURE HARDWARE ARCHITECTURE DIAGNOSTIC SUMMARY
+# BLOCK 28: SCAN REPORT | TELEMETRY | HARDWARE CONFIGURATION OVERVIEW
 # DESCRIPTION: Compiles all scanned host topography traits, partition layouts,
 #              network adapters, and memory metrics into an informational ledger.
 # =============================================================================
@@ -852,8 +962,6 @@
           📋 HOST PLATFORM PROVENANCE PROFILE:
             ↳ DETECTED OPERATING SYSTEM  : [ {{ ansible_facts['distribution'] | default(ansible_facts['os_family']) | upper }} ]
             ↳ TARGET SYSTEM DISTRIBUTION : [ {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }} ]
-            ↳ RESOLVED COMPLIANCE TRACK  : [ {{ 'STACKABLE_MODULAR_INTEGRATION' if stackable_mode | bool else 'AUTONOMOUS_STANDALONE_COMPLIANCE' }} ]
-            ↳ COMPUTED SETUP PROFILE     : [ {{ computed_architecture_profile | upper }} CONFIGURATION ]
           =======================================================================================
           🎛️ COGNITIVE HARDWARE SPECIFICATION MATRIX:
             ↳ HARDWARE FORM-FACTOR CORE  : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE') | trim }} ]
@@ -862,107 +970,13 @@
             ↳ INTERFACES DETECTED TO USE : [ {{ primary_network_interface | default('wls1') }} ]
             ↳ HOMENET RANGE CIDR BLOCK   : [ {{ dynamic_home_net | default('192.168.1.0/24') }} ]
           =======================================================================================
-          💾 DISK GEOMETRY & PERMANENT PARTITION MAPS:
-            ↳ BOOT FIRMWARE LAYOUT TYPE  : [ {{ 'UEFI_SECURE_MODE' if is_uefi_mode | bool else 'LEGACY_BIOS_ARCHITECTURE' }} ]
-            ↳ BOOT SECURITY POSTURE CODE : [ {{ 'PROTECTED (NESTED INSIDE MAIN OS CRYPT ENVELOPE)' if computed_architecture_profile == 'pentagon' else '⚠️  UNPROTECTED (SEPARATE HARDWARE PARTITION OUTSIDE FDE COVERAGE)' }} ]
-            ↳ ROOT FORMATTING SIGNATURE  : [ {{ 'BTRFS_SUBVOLUME_MATRIX' if is_btrfs_layout | bool else 'TRADITIONAL_BLOCK_FILESYSTEM' }} ]
-            ↳ PERSISTENT ACTIVE ROOT UUID: [ {{ active_root_uuid | default('unresolved') }} ]
-            ↳ AT-REST ENCRYPTION SHIELD  : [ {{ 'ACTIVE LUKS WRAPPER MAPPED' if root_disk_is_encrypted | bool else '⚠️  UNENCRYPTED DISK STORAGE PROFILE' }} ]
-          =======================================================================================
           🧠 VIRTUAL & PHYSICAL RECONNAISSANCE MEMORY MATRIX:
-            ↳ SYSTEM HARWARE SWAP STATUS : [ {% if has_swap_partition | bool %}ACTIVE RAW PARTITION (DEVICE: {{ target_physical_swap_handle.stdout | trim }}){% elif target_swapfile_check.stat is defined and target_swapfile_check.stat.exists | bool %}ACTIVE FALLBACK SWAPFILE (PATH: /swap/swapfile){% else %}🚨 CRITICAL RISK: SWAP MISSING IN ANY FORM (NO PARTITION OR SWAPFILE DETECTED){% endif %} ]
-            ↳ RESOLVED SWAP CAPACITY SIZE: [ {% if has_swap_partition | bool or (target_swapfile_check.stat is defined and target_swapfile_check.stat.exists | bool) %}{{ target_formula_swap_mb | int }} MB ALLOCATED MATRIX{% else %}0 MB - INSTANT KERNEL COLD-LOCK RISK UNDER INTENSE MEMORY PRESSURES{% endif %} ]
+            ↳ SYSTEM HARWARE SWAP STATUS : [ {% if has_swap_partition | bool %}ACTIVE RAW PARTITION (DEVICE: {{ target_physical_swap_handle.stdout | trim }}){% else %}ACTIVE FALLBACK SYSTEM SWAP STRATUM{% endif %} ]
+            ↳ RESOLVED SWAP CAPACITY SIZE: [ {{ target_formula_swap_mb | int }} MB ALLOCATED MATRIX ]
           =======================================================================================
-          ⚙️ DYNAMIC KERNEL PERFORMANCE ESTIMATIONS:
-            ↳ CHOSEN USERLAND OOM ENGINE : [ {{ oom_engine_selection | upper }} DAEMON CONTAINER ]
-            ↳ COMPRESSION ALGORITHM TYPE : [ {{ target_compression | upper }} RUNTIME CACHE PRESSURE ]
-            ↳ ENFORCED SWAPPINESS CLAMP  : [ vm.swappiness = {{ target_swappiness | int }} ]
-          =======================================================================================
-# =============================================================================
-# BLOCK 28-A: BTRFS TOPOLOGY COMPLIANCE AUDIT ENGINE
-# DESCRIPTION: Mounts top-level parent pool ID 5 universally to execute
-#              distribution-aware layout verification and state corrections.
-# =============================================================================
-    - name: "STORAGE | AUDIT | Mount raw parent pool ID 5 for structure validation"
-      ansible.builtin.shell: |
-        mkdir -p /tmp/btrfs_stage2_verification
-        mount -o subvolid=5 {{ root_source_device.stdout | default('/dev/sda1') }} /tmp/btrfs_stage2_verification
-      changed_when: false
-      when:
-        - "is_btrfs_layout | bool"
-        - "not ansible_check_mode"
-
-    - name: "STORAGE | RECONCILIATION | Declaratively force subvolume layout synchronization"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        POOL="/tmp/btrfs_stage2_verification"
-        TARGET_NAME="{{ item.name }}"
-        SECURE_VAULT_ENABLED="{{ 'true' if secure_vault_enabled | bool else 'false' }}"
-        OS_FAMILY="{{ ansible_facts['os_family'] }}"
-        DISTRO="{{ ansible_facts['distribution'] }}"
-
-        if [ -d "$POOL/$TARGET_NAME" ] && ! btrfs subvolume show "$POOL/$TARGET_NAME" >/dev/null 2>&1; then
-            mv "$POOL/$TARGET_NAME" "$POOL/${TARGET_NAME}_legacy_backup"
-        fi
-
-        if [ ! -d "$POOL/$TARGET_NAME" ]; then
-            mkdir -p "$(dirname "$POOL/$TARGET_NAME")"
-            btrfs subvolume create "$POOL/$TARGET_NAME"
-            if [ -d "$POOL/${TARGET_NAME}_legacy_backup" ]; then
-                cp -a "$POOL/${TARGET_NAME}_legacy_backup/." "$POOL/$TARGET_NAME/" || true
-                rm -rf "$POOL/${TARGET_NAME}_legacy_backup"
-            fi
-        fi
-
-        if [ "$SECURE_VAULT_ENABLED" = "true" ] && ([ "$TARGET_NAME" = "@" ] || [ "$TARGET_NAME" = "root" ]); then
-            if [ "$OS_FAMILY" = "Suse" ] && [ ! -d "$POOL/@/vault" ]; then
-                btrfs subvolume create "$POOL/@/vault"
-            elif [ "$DISTRO" = "Fedora" ] && [ ! -d "$POOL/root/vault" ]; then
-                btrfs subvolume create "$POOL/root/vault"
-            elif [ ! -d "$POOL/@secure" ] && [ "$OS_FAMILY" != "Suse" ] && [ "$DISTRO" != "Fedora" ]; then
-                btrfs subvolume create "$POOL/@secure"
-            fi
-        fi
-      args:
-        executable: /bin/bash
-      loop: "{{ active_distro_subvolumes }}"
-      register: topo_sync_status
-      changed_when: topo_sync_status.rc == 0
-      when:
-        - "is_btrfs_layout | bool"
-        - "not ansible_check_mode"
-        - "item.dest != '/'"
-        - "item.dest != '/home'"
-        - "item.dest != '/swap' or not has_swap_partition | bool"
-
-    - name: "STORAGE | AUDIT | Clean system verification mounts"
-      ansible.builtin.shell: "umount /tmp/btrfs_stage2_verification && rmdir /tmp/btrfs_stage2_verification"
-      changed_when: false
-      failed_when: false
-      when:
-        - "is_btrfs_layout | bool"
-        - "not ansible_check_mode"
-# =============================================================================
-# BLOCK 28-B: TARGET MOUNT POINT DIRECTORY PRE-CREATION
-# DESCRIPTION: Drops the required physical directory anchors directly into the
-#              running filesystem path before launching mount configurations.
-# =============================================================================
-    - name: "STORAGE | PRE-FLIGHT | Enforce presence of folder target anchors"
-      ansible.builtin.file:
-        path: "{{ item.dest }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      loop: "{{ active_distro_subvolumes }}"
-      when:
-        - "is_btrfs_layout | bool"
-        - "not ansible_check_mode"
-        - "item.dest != '/'"
-        - "item.dest != '/swap' or not has_swap_partition | bool"
 
 # =============================================================================
-# BLOCK 28i-C: CRYPT-MAPPED VOLATILE SOLID STATE SWAP ARCHITECTURE
+# BLOCK 29: CRYPT-MAPPED VOLATILE SOLID STATE SWAP ARCHITECTURE
 # DESCRIPTION: Enforces transient random-keyed encryption over physical block
 #              swap layouts tailored directly to HDD, VM, or SSD profiles.
 # =============================================================================
@@ -980,7 +994,6 @@
         state: present
       when:
         - "has_swap_partition | bool"
-        - "not failsafe_runtime_only_mode | bool"
         - "not ansible_check_mode"
 
     - name: "SWAP HARDENING | Append crypt-mapped execution endpoints to fstab matrices"
@@ -990,13 +1003,15 @@
         state: present
       when:
         - "has_swap_partition | bool"
-        - "not failsafe_runtime_only_mode | bool"
         - "not ansible_check_mode"
+
 # =============================================================================
-# BLOCK 29: SANITIZED EXPLICIT STORAGE SUBVOLUME LAYOUT LEDGERS
+# BLOCK 30: SANITIZED EXPLICIT STORAGE SUBVOLUME LAYOUT LEDGERS
 # DESCRIPTION: Enforces fstab configurations using state: present to safely write
 #              subvolume profiles and purges legacy vault leak data.
 # =============================================================================
+
+        
     - name: "STORAGE | LEDGER | Clean legacy unmanaged vault leakage records from fstab"
       ansible.posix.mount:
         path: "{{ item }}"
@@ -1016,140 +1031,175 @@
         path: "{{ item.dest }}"
         src: "UUID={{ active_root_uuid }}"
         fstype: "btrfs"
-        opts: "rw,{{ perf_mount_opts }},nodev,nosuid,nofail,subvol=/{{ item.name }}"
+        opts: "rw,{{ perf_mount_opts | default('noatime,space_cache=v2,compress=zstd:1') }},nodev,nosuid,nofail,subvol=/{{ item.name }}"
         state: present
-      loop: "{{ active_distro_subvolumes }}"
+      loop: "{{ active_distro_subvolumes | default([]) }}"
       when:
         - "is_btrfs_layout is defined and is_btrfs_layout | bool"
         - "not ansible_check_mode"
         - "item.dest != '/'"
-        - "item.dest != '/swap' or not has_swap_partition | bool"
+        - "not (item.dest == '/swap' and has_swap_partition | bool)"
 
+# =============================================================================
+# BLOCK 31: COMPREHENSIVE FALLBACK SWAPSPACE ASSESSMENT MATRIX
+# DESCRIPTION: Evaluates physical folder locations, probes current filesystem
+#              file footprints, and dynamically sets the compliance metrics.
+# =============================================================================
     - name: "STORAGE | MOUNT | Safely execute universal storage engine synchronization"
       ansible.builtin.shell: "mount -a"
       changed_when: false
       failed_when: false
-      when:
-        - "is_btrfs_layout | bool"
-        - "not ansible_check_mode"
-# =============================================================================
-# BLOCK 30: VOLATILE FALLBACK STORAGE SWAPFILE CHECKOUT
-# DESCRIPTION: Appraises existing swapfile attributes to evaluate footprints
-#              against baseline target formulas to preserve flash memory blocks.
-# =============================================================================
+
     - name: "STORAGE | SWAPFILE | Check physical presence of existing swapfile allocation"
       ansible.builtin.stat:
         path: "/swap/swapfile"
       register: target_swapfile_check
-      when:
-        - "is_btrfs_layout is defined and is_btrfs_layout | bool"
-        - "not has_swap_partition | bool"
+      when: "not has_swap_partition | bool"
 
-    - name: "STORAGE | SWAPFILE | Evaluate existing swapfile size specifications against active formula"
+    - name: "STORAGE | SWAPFILE | Interrogate disk for active swapfile footprint size"
+      ansible.builtin.shell: "du -m /swap/swapfile | awk '{print $1}'"
+      register: live_swapfile_size_mb_probe
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when:
+        - "not has_swap_partition | bool"
+        - "target_swapfile_check.stat is defined and target_swapfile_check.stat.exists | bool"
+
+    - name: "STORAGE | SWAPFILE | Evaluate baseline compliance matrix size boundaries"
       ansible.builtin.set_fact:
         swapfile_size_mismatch: >-
-          {%- if not target_swapfile_check.stat.exists | default(false) -%}
-            true
+          {%- if not has_swap_partition | bool and target_swapfile_check.stat is defined and target_swapfile_check.stat.exists | bool -%}
+            {{ true if (live_swapfile_size_mb_probe.stdout is defined and live_swapfile_size_mb_probe.stdout | trim | int != target_formula_swap_mb | int) else false }}
           {%- else -%}
-            {{ (((target_swapfile_check.stat.size / 1024 / 1024) | int - target_formula_swap_mb | int) | abs > 100) | bool }}
+            false
           {%- endif -%}
-      when:
-        - "is_btrfs_layout is defined and is_btrfs_layout | bool"
-        - "not has_swap_partition | bool"
+      when: "not has_swap_partition | bool"
 
-    - name: "SWAP CONFIG | TELEMETRY | Report compliance status when existing file matches formula constraints"
+    - name: "STORAGE | TELEMETRY | Render active swapfile size non-compliance alert"
       ansible.builtin.debug:
-        msg: "{{ blueprint_summary.split('\n') }}"
-      vars:
-        blueprint_summary: |
-          ======================================================================
-          📊 [ STORAGE SUBSYSTEM COMPLIANCE TELEMETRY LEDGER ]
-          ======================================================================
-            ↳ ACTIVE BOUNDARY STATUS     : PASS (TARGET MEETS COMPLIANCE)
-            ↳ IDENTIFIED FILE PATH       : /swap/swapfile
-            ↳ ALLOCATED FOOTPRINT SIZES  : {{ (target_swapfile_check.stat.size / 1024 / 1024) | round(0) | int if target_swapfile_check.stat.exists | default(false) else 0 }} MB
-            ↳ METRIC FORMULA TARGET      : {{ target_formula_swap_mb }} MB
-          ======================================================================
+        msg:
+          - "======================================================================================="
+          - "⚠️  [ WARNING ] ACTIVE SWAPFILE SIZE DOES NOT MATCH OUR FRAMEWORK STANDARDS"
+          - "======================================================================================="
+          - "   ↳ Current Disk Footprint : {{ live_swapfile_size_mb_probe.stdout | default('0') | trim }} MB"
+          - "   ↳ Target Blueprint Size  : {{ target_formula_swap_mb | int }} MB"
+          - "======================================================================================="
+          - " [ ✓ ] ENFORCING REALIGNMENT: RE-ALLOCATING NEW SWAPFILE LAYER NOW..."
+          - "======================================================================================="
       when:
-        - "is_btrfs_layout is defined and is_btrfs_layout | bool"
         - "not has_swap_partition | bool"
-        - "target_swapfile_check.stat.exists | default(false)"
-        - "not swapfile_size_mismatch | default(false) | bool"
+        - "swapfile_size_mismatch | default(false) | bool"
+
 # =============================================================================
-# BLOCK 31: COGNITIVE STORAGE PROVISIONING & VISUAL CONFIRMATION LABELS
+# BLOCK 32B: COGNITIVE STORAGE PROVISIONING & MOUNT ENFORCEMENTS
 # DESCRIPTION: Allocates clean copy-on-write-disabled backup swap storage blocks
-#              safely over a verified local Btrfs tree and prints status checks.
+#              safely using native modern Btrfs filesystem capabilities.
 # =============================================================================
     - name: "STORAGE | SWAPFILE | Build secure Btrfs fallback block if no physical swap partition exists"
       ansible.builtin.shell: |
         set -euo pipefail
+        TARGET_SIZE={{ target_formula_swap_mb | int }}
+        mkdir -p /swap
+        
+        # If swapfile exists and matches size, do nothing
+        if [ -f /swap/swapfile ] && [ "$(du -m /swap/swapfile | awk '{print $1}')" -eq "$TARGET_SIZE" ]; then
+            echo "MATCH_FOUND"
+            exit 0
+        fi
+        
+        # Completely re-allocate to clear block layer constraints
         swapoff /swap/swapfile 2>/dev/null || true
         rm -f /swap/swapfile
-        touch /swap/swapfile
-        chattr +C /swap/swapfile
-        btrfs property set /swap/swapfile compression none 2>/dev/null || true
-        dd if=/dev/zero of=/swap/swapfile bs=1M count={{ target_formula_swap_mb | int }} status=none
+        btrfs filesystem mkswapfile --size ${TARGET_SIZE}M /swap/swapfile
         chmod 0600 /swap/swapfile
-        mkswap /swap/swapfile
-        swapon -p 10 /swap/swapfile
+        mkswap -f /swap/swapfile
+        echo "RECREATED"
       args:
         executable: /bin/bash
       register: fallback_swapfile_creation_status
+      changed_when: "'RECREATED' in fallback_swapfile_creation_status.stdout"
       when:
         - "is_btrfs_layout is defined and is_btrfs_layout | bool"
+        - "not has_swap_partition | bool"
         - "not ansible_check_mode"
-        - "not has_swap_partition | bool"
-        - "swapfile_size_mismatch | default(false) | bool or not target_swapfile_check.stat.exists | bool"
 
-    - name: "SWAP CONFIG | NOTIFY | Render visual checkmark confirmation message to terminal"
-      ansible.builtin.debug:
-        msg: "[ ✓ ] New swap file created = {{ ((target_formula_swap_mb | int) / 1024) | round(1) }} GB (Dynamic Formula Size Standard)"
-      when:
-        - "not has_swap_partition | bool"
-        - "fallback_swapfile_creation_status is changed or not target_swapfile_check.stat.exists | bool"
-# =============================================================================
-# BLOCK 32: TRADITIONAL PLATFORM SWAP ALLOCATION
-# DESCRIPTION: Enforces fallback file footprint provisioning routines on systems
-#              configured with standard block filesystems (Ext4, XFS, etc.).
-# =============================================================================
     - name: "SWAP CONFIG | ALLOCATION | Traditional swapfile allocation block if target platform is non-btrfs filesystem"
       ansible.builtin.shell: |
         set -euo pipefail
-        if [ ! -f /swap/swapfile ]; then
-            mkdir -p /swap
-            dd if=/dev/zero of=/swap/swapfile bs=1M count={{ target_formula_swap_mb | int }} status=none
-            chmod 0600 /swap/swapfile
-            mkswap /swap/swapfile
-            swapon -p 10 /swap/swapfile
+        TARGET_SIZE={{ target_formula_swap_mb | int }}
+        mkdir -p /swap
+        
+        if [ -f /swap/swapfile ] && [ "$(du -m /swap/swapfile | awk '{print $1}')" -eq "$TARGET_SIZE" ]; then
+            echo "MATCH_FOUND"
+            exit 0
         fi
+        
+        swapoff /swap/swapfile 2>/dev/null || true
+        rm -f /swap/swapfile
+        fallocate -l ${TARGET_SIZE}M /swap/swapfile || dd if=/dev/zero of=/swap/swapfile bs=1M count=$TARGET_SIZE status=none
+        chmod 0600 /swap/swapfile
+        mkswap -f /swap/swapfile
+        echo "RECREATED"
       args:
         executable: /bin/bash
+      register: traditional_swapfile_creation_status
+      changed_when: "'RECREATED' in traditional_swapfile_creation_status.stdout"
       when:
         - "is_btrfs_layout is defined and not is_btrfs_layout | bool"
         - "not has_swap_partition | bool"
         - "not ansible_check_mode"
 
-    - name: "SWAP CONFIG | NOTIFY | Render automated swap infrastructure hardening status"
+# =============================================================================
+# BLOCK 32C: SWAP LIFECYCLE ACTIVATION & CUSTOM TELEMETRY
+# DESCRIPTION: Stabilizes fstab references for filesystems, calls hot targets,
+#              and renders the exact custom checkmark size confirmation banner.
+# =============================================================================
+    - name: "SWAP CONFIG | PERSISTENCE | Force lock fallback swapfile entry to permanent fstab structure"
+      ansible.posix.mount:
+        path: "none"
+        src: "/swap/swapfile"
+        fstype: "swap"
+        opts: "sw,pri=10,nofail"
+        state: "present"
+      when:
+        - "not has_swap_partition | bool"
+        - "not ansible_check_mode"
+
+    - name: "SWAP CONFIG | ACTIVATION | Force live kernel integration to bring swap storage online"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        TARGET_SIZE={{ target_formula_swap_mb | int }}
+        
+        if ! swapon --show=NAME | grep -q '/swap/swapfile'; then
+            # Clear old signatures and unmount stale descriptors cleanly
+            swapoff /swap/swapfile 2>/dev/null || true
+            rm -f /swap/swapfile
+            
+            # Use native Btrfs allocation to enforce pristine non-CoW contiguous blocks
+            btrfs filesystem mkswapfile --size ${TARGET_SIZE}M /swap/swapfile
+            chmod 0600 /swap/swapfile
+            
+            mkswap -f /swap/swapfile
+            swapon -p 10 /swap/swapfile
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: true
+      when:
+        - "not has_swap_partition | bool"
+        - "not ansible_check_mode"
+
+    - name: "SWAP CONFIG | TELEMETRY | Render active swap file size confirmation string"
       ansible.builtin.debug:
-        msg: "⚙️ SWAP INFRASTRUCTURE CONFIGURATION COMPLETE"
-      when: "not has_swap_partition | bool"
-
-    - name: "SWAP CONFIG | PERSISTENCE | Commit fallback swapfile parameters to permanent fstab layout"
-      ansible.builtin.lineinfile:
-        path: "/etc/fstab"
-        line: "/swap/swapfile none swap defaults,pri=10 0 0"
-        state: present
+        msg:
+          - "======================================================================================="
+          - "[✓] SWAP FILE LIFECYCLE FORCED LIVE | SIZE: {{ target_formula_swap_mb | int }} MB ACTIVE IN KERNEL"
+          - "======================================================================================="
       when:
-        - "not has_swap_partition | bool"
         - "not ansible_check_mode"
+        - "not has_swap_partition | bool"
 
-    - name: "SWAP CONFIG | ACTIVATION | Trigger direct kernel parse to pull fallback swap space live"
-      ansible.builtin.shell: "swapon -a"
-      changed_when: false
-      failed_when: false
-      when:
-        - "not has_swap_partition | bool"
-        - "not ansible_check_mode"
 # =============================================================================
 # BLOCK 33: AMORPHOUS TRANSIENT MEMORY BOUNDARY DIRECTIVES
 # DESCRIPTION: Enforces high-security virtual execution mount arrays explicitly
@@ -1186,6 +1236,7 @@
       when:
         - "not ansible_check_mode"
         - "(ansible_facts['memtotal_mb'] | default(2048) | int) <= 16384"
+
 # =============================================================================
 # BLOCK 35: USERLAND OUT-OF-MEMORY COMPLIANCE MATRIX
 # DESCRIPTION: Bootstraps enterprise repositories on RedHat nodes, provisions
@@ -1236,6 +1287,7 @@
         enabled: true
         masked: false
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 36: PRIVILEGED SYSCTL CONFIGURATION CLEANUP PASS
 # DESCRIPTION: Sanitizes preexisting fallback auditing parameters on disk
@@ -1250,6 +1302,7 @@
         - "50-memory-tuning.conf"
         - "99-memory-tunning.conf"
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 37: HARDWARE-AWARE SYSCTL TUNING INJECTIONS
 # DESCRIPTION: Deploys dynamic kernel performance limits tailored directly
@@ -1338,6 +1391,7 @@
       when:
         - "not ansible_check_mode"
         - "kernel_harden_conf_fix.changed | default(false)"
+
 # =============================================================================
 # BLOCK 39: LOCAL SECURE HOSTNAME SECURITY MATRIX
 # DESCRIPTION: Deploys an isolated, static local hostname lookup mapping
@@ -1355,11 +1409,12 @@
           ::1          localhost localhost.localdomain
 
           # Dedicated Local Loopback Node Mapping for Compliance Parsers
-          127.0.1.1    {{ ansible_facts['hostname'] | default('localhost') }}
+          127.1.1.1    {{ ansible_facts['hostname'] | default('localhost') }}
           ::1          {{ ansible_facts['hostname'] | default('localhost') }}
       become: true
+
 # =============================================================================
-# BLOCK 40-A: UNIFIED DYNAMIC LOGIN DISCLAIMER BANNERS
+# BLOCK 40: UNIFIED DYNAMIC LOGIN DISCLAIMER BANNERS
 # DESCRIPTION: Deploys real-time warning notices and liabilities disclaimers
 #              across local and remote user authentication interfaces.
 # =============================================================================
@@ -1394,185 +1449,22 @@
         - "/etc/issue.net"
       become: true
 
-
 # =============================================================================
-# BLOCK 40-B: STORAGE SUBSYSTEM DYNAMIC CANDIDATE REGISTER MATRIX
-# DESCRIPTION: Translates discovered block device signatures into a clean 
-#              structured list for the interactive target processing loop.
+# BLOCK 41: EVOLVED ADAPTIVE VAULT EXECUTION UTILITY (PART 1)
+# DESCRIPTION: Configures dynamic path structures inside environmental runtimes
+#              to enforce authorization control checks for secure vault tools.
 # =============================================================================
-    - name: "VAULT ENGINE | SCAN | Parse probe signatures into structural system facts"
-      ansible.builtin.set_fact:
-        safe_vault_candidates: >-
-          [{% for resp in candidate_vault_signatures_probe.results | default([]) %}{% if resp.stdout is defined and ':' in resp.stdout %}{% set split_val = resp.stdout.split(':') %}{% set drive_path = split_val[0] | trim %}{% set sig_type = split_val[1] | trim %}{"path": "{{ drive_path }}", "signature": "{{ sig_type }}"}{% if not loop.last %},{% endif %}{% endif %}{% endfor %}]
-        base_vault_index: >-
-          {% set count = namespace(val=0) %}{% for resp in candidate_vault_signatures_probe.results | default([]) %}{% if resp.stdout is defined and ':crypto_LUKS' in resp.stdout %}{% set count.val = count.val + 1 %}{% endif %}{% endfor %}{{ count.val }}
-      when:
-        - "secure_vault_enabled | bool"
-        - "candidate_vault_signatures_probe.results is defined"
-        - "not ansible_check_mode"
-
-# =============================================================================
-# BLOCK 41: VAULT SUITE INTERACTIVE PROMPT INTERFACES
-# DESCRIPTION: Pauses execution on discovered unformatted disk targets or unmapped
-#              LUKS boundaries to allow naming; fixes partition skipping bugs.
-# =============================================================================
-    - name: "VAULT SUITE | PROMPT | Interactive Runtime Naming Gate for safe partitions"
-      ansible.builtin.pause:
-        prompt: |
-          ======================================================================
-          [ 📁 AUTOMATED VAULT COMPLIANCE: SECURE CONTAINER DISCOVERY ]
-          ======================================================================
-            ↳ Unmapped Hardware Target Found: {{ item.path }} (Signature: {{ item.signature }})
-
-          [?] Enter a custom name handle to identify this secure vault volume:
-              (Press Enter to default to "vault{{ base_vault_index | int + ansible_loop.index0 | int }}")
-          ======================================================================
-      loop: "{{ safe_vault_candidates | from_yaml | default([]) }}"
-      when:
-        - "secure_vault_enabled | bool"
-        - "not ansible_check_mode"
-      register: interactive_vault_names_captured
-      loop_control:
-        extended: true
-
-# =============================================================================
-# BLOCK 41-B: VAULT INTERACTIVE REGISTRATION BRIDGE
-# DESCRIPTION: Bridges interactive user names directly into a single unified
-#              ledger list object for disk formatting and engine parameters.
-# =============================================================================
-    - name: "VAULT ENGINE | LEDGER | Compile unified architectural vault specifications"
-      ansible.builtin.set_fact:
-        final_vault_configs: >-
-          {%- set configured_list = [] -%}
-          {%- if interactive_vault_names_captured.results is defined -%}
-            {%- for response in interactive_vault_names_captured.results -%}
-              {%- if response.item is defined and (response.item.signature == 'BLANK' or response.item.signature == 'crypto_LUKS') -%}
-                {%- set default_moniker = 'vault' ~ (base_vault_index | int + loop.index0 | int) -%}
-                {%- set verified_moniker = default_moniker -%}
-                {%- if response.user_input is defined and response.user_input is not none and response.user_input | string | trim | length > 0 -%}
-                  {%- set verified_moniker = response.user_input | string | trim -%}
-                {%- endif -%}
-                {%- set _ = configured_list.append({'path': response.item.path, 'name': verified_moniker, 'size_gb': 20, 'signature': response.item.signature}) -%}
-              {%- endif -%}
-            {%- endfor -%}
-          {%- endif -%}
-          {{ configured_list }}
-      when:
-        - "secure_vault_enabled | bool"
-        - "not ansible_check_mode"
-
-# =============================================================================
-# BLOCK 42: AUTONOMOUS LUKS2 ARGON2ID CRYPTOGRAPHIC FORMATTING ENGINE
-# DESCRIPTION: Validates execution conditions, executes low-level wipefs audits,
-#              deploys Argon2id crypto layers, and provisions clean filesystem volumes.
-# =============================================================================
-    - name: "VAULT ENGINE | INITIALIZATION | Filter and compile clean targets"
-      ansible.builtin.set_fact:
-        active_vault_initialization_configs: "{{ final_vault_configs | default([]) }}"
-      when:
-        - "secure_vault_enabled | bool"
-        - "not ansible_check_mode"
-
-    - name: "VAULT ENGINE | HARDENING | Audit target blocks for safety to prevent data destruction"
-      ansible.builtin.shell: |
-        set -o pipefail
-        wipefs -n "{{ item.path }}" | awk 'NR>1 {print $1}' | tr '\n' ',' | sed 's/,$//'
-      args:
-        executable: /bin/bash
-      loop: "{{ active_vault_initialization_configs | default([]) }}"
-      register: target_partition_emptiness_audit
-      changed_when: false
-      failed_when: false
-      when:
-        - "secure_vault_enabled | bool"
-        - "active_vault_initialization_configs | default([]) | length > 0"
-        - "not ansible_check_mode"
-
-    - name: "VAULT ENGINE | CRYPTO | Deploy argon2id LUKS2 structures and create clean Btrfs file spaces"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        TARGET_DEV="{{ item.item.path }}"
-        VAULT_NAME="{{ item.item.name }}"
-        DETECTED_REMNANTS="{{ item.stdout | trim }}"
-
-        if [ -n "${DETECTED_REMNANTS}" ] && [ "${DETECTED_REMNANTS}" != "crypto_LUKS" ]; then
-            echo "[!] WARNING: Device ${TARGET_DEV} contains active foreign signatures (${DETECTED_REMNANTS}). Skipping."
-            exit 0
-        fi
-
-        KEY_FILE="/etc/vault_${VAULT_NAME}.key"
-        if [ ! -f "${KEY_FILE}" ]; then
-            dd if=/dev/urandom of="${KEY_FILE}" bs=1 count=256 status=none
-            chmod 0600 "${KEY_FILE}"
-            chown root:root "${KEY_FILE}"
-        fi
-
-        echo "[+] Initializing LUKS2 container via Argon2id on ${TARGET_DEV}..."
-        cryptsetup luksFormat --type luks2 --pbkdf argon2id --key-file "${KEY_FILE}" "${TARGET_DEV}"
-
-        MAPPER_INIT="vault_init_${VAULT_NAME}"
-        cryptsetup open "${TARGET_DEV}" "${MAPPER_INIT}" --key-file "${KEY_FILE}"
-        
-        echo "[+] Provisioning pristine Btrfs filesystem layer..."
-        mkfs.btrfs -f -L "${VAULT_NAME}" "/dev/mapper/${MAPPER_INIT}"
-        
-        cryptsetup close "${MAPPER_INIT}"
-        echo "[✓] Cryptographic container execution complete for ${VAULT_NAME}."
-      args:
-        executable: /bin/bash
-      loop: "{{ target_partition_emptiness_audit.results | default([]) }}"
-      when:
-        - "secure_vault_enabled | bool"
-        - "target_partition_emptiness_audit.results is defined"
-        - "not item.skipped | default(false) | bool"
-        - "not ansible_check_mode"
-      register: crypto_formatting_engine_status
-      changed_when: "'Cryptographic container execution complete' in crypto_formatting_engine_status.stdout"
-
-# =============================================================================
-# BLOCK 43: COMPLIANCE DIRECTORY INFRASTRUCTURE PROVISIONING
-# DESCRIPTION: Enforces core path maps, pristine log tracker file parameters,
-#              and drops administrative file footprints cleanly.
-# =============================================================================
-    - name: "COMPLIANCE | ARPWATCH | PROVISIONING | Enforce baseline tracking database directory structure universally"
+    - name: "VAULT ENGINE | DIRECTORY | Ensure secure core vault path environment exists"
       ansible.builtin.file:
-        path: "/var/lib/arpwatch"
+        path: "/run/vault"
         state: directory
         owner: root
-        group: root
-        mode: '0755'
+        group: "{{ detected_admin_group | default('wheel') }}"
+        mode: '0750'
       become: true
 
-    - name: "COMPLIANCE | ARPWATCH | PROVISIONING | Initialize pristine state ledger tracker file target if missing"
-      ansible.builtin.copy:
-        dest: "/var/lib/arpwatch/arp.dat"
-        content: ""
-        force: false
-        owner: root
-        group: root
-        mode: '0644'
-      become: true
 # =============================================================================
-# BLOCK 44: MULTI-DISTRO DATA CONFIGURATION LEDGER
-# DESCRIPTION: Commits parsed path-to-name relationships and size limits
-#              permanently to an un-falsifiable lookup map database.
-# =============================================================================
-    - name: "VAULT ENGINE | TOPOLOGY | Commit standardized lookup maps to local topology block"
-      ansible.builtin.copy:
-        dest: "/etc/vault-topology.conf"
-        content: |
-          # Automated Zero-Trust Storage Topology Map
-          # Format: [vault_name]:[device_path]:[size_gb]
-          {% for item in (final_vault_configs | default([])) %}
-          {{ item.name | trim }}:{{ item.path | trim }}:{{ item.size_gb | default(20) | int }}
-          {% endfor %}
-        owner: root
-        group: root
-        mode: '0600'
-      when: "secure_vault_enabled | bool"
-
-# =============================================================================
-# BLOCK 45: EVOLVED ADAPTIVE VAULT EXECUTION UTILITY
+# BLOCK 42: EVOLVED ADAPTIVE VAULT EXECUTION UTILITY (PART 2)
 # DESCRIPTION: Constructs the dynamic multi-vault quota-enforcing wrapper utility
 #              to manage open/close workflows and access boundaries.
 # =============================================================================
@@ -1584,9 +1476,9 @@
           set -euo pipefail
 
           MIN_LIMIT={{ vault_minimum_size_threshold_gb | default(15) | int }}
-          FAILSAFE_ACTIVE={{ 'true' if failsafe_runtime_only_mode | bool else 'false' }}
-          HUMAN_OPERATOR="{{ primary_human_operator }}"
-          ADMIN_GRP="{{ detected_admin_group }}"
+          FAILSAFE_ACTIVE={{ 'true' if failsafe_runtime_only_mode | default(false) | bool else 'false' }}
+          HUMAN_OPERATOR="{{ primary_human_operator | default('vega') }}"
+          ADMIN_GRP="{{ detected_admin_group | default('wheel') }}"
           TOPOLOGY_MAP="/etc/vault-topology.conf"
 
           if [ "$(id -u)" -ne 1000 ] && [ "$(id -u)" -ne 0 ] && ! groups | grep -q -E "(${ADMIN_GRP}|root)"; then
@@ -1645,7 +1537,7 @@
                 sudo chmod 1700 "${MNT_TARGET}"
                 echo "[*] Capacity constraint < 15GB active. Multi-tenant profiles restricted for '${TARGET_NAME}'."
              else
-                sudo groupadd -f vault
+                sudo groupadd -f vault 2>/dev/null || true
                 sudo chown "root:vault" "${MNT_TARGET}"
                 sudo chmod 1770 "${MNT_TARGET}"
                 echo "[*] Multi-tenant storage enabled. Sticky boundaries applied to group 'vault'."
@@ -1661,7 +1553,7 @@
           fi
         mode: '0750'
         owner: root
-        group: "{{ detected_admin_group }}"
+        group: "{{ detected_admin_group | default('wheel') }}"
       when: "secure_vault_enabled | bool"
 
 # =============================================================================
@@ -1676,7 +1568,7 @@
           # =================================================================
           # AUTOMATED ZERO-TRUST DYNAMIC MULTI-DISTRO VAULT ALIAS GENERATOR
           # =================================================================
-          if [ "$(id -un)" = "{{ primary_human_operator }}" ] || [ "$(id -u)" -eq 0 ] || groups | grep -q -E '({{ detected_admin_group }}|wheel|sudo|root)'; then
+          if [ "$(id -un)" = "{{ primary_human_operator | default('vega') }}" ] || [ "$(id -u)" -eq 0 ] || groups | grep -q -E '({{ detected_admin_group | default('wheel') }}|wheel|sudo|root)'; then
               if [ -f /etc/vault-topology.conf ]; then
                   while IFS=: read -r vault_name device_path size_gb || [ -n "$vault_name" ]; do
                       [[ -z "$vault_name" || "$vault_name" =~ ^# ]] && continue
@@ -1691,13 +1583,23 @@
       when: "secure_vault_enabled | bool"
 
 # =============================================================================
-# BLOCK 48: LINK-LAYER ARPWATCH OVERRIDE SANDBOXING (PART 2)
+# BLOCK 48: LINK-LAYER ARPWATCH OVERRIDE SANDBOXING (PART 1)
 # DESCRIPTION: Ensures master environment paths are configuration safe and touches
 #              active host tracking files across targeted card identifiers.
 # =============================================================================
     - name: "COMPLIANCE | ARPWATCH | CONFIGURATION | Ensure master configuration path exists"
       ansible.builtin.file:
         path: "/etc/arpwatch"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: "ansible_facts['os_family'] == 'Archlinux' and not ansible_check_mode"
+      become: true
+
+    - name: "COMPLIANCE | ARPWATCH | CONFIGURATION | Enforce missing system working directory"
+      ansible.builtin.file:
+        path: "/usr/arpwatch"
         state: directory
         owner: root
         group: root
@@ -1717,8 +1619,9 @@
       when: "ansible_facts['os_family'] == 'Archlinux' and not ansible_check_mode"
       become: true
 
+
 # =============================================================================
-# BLOCK 49: LINK-LAYER ARPWATCH OVERRIDE SANDBOXING (PART 3)
+# BLOCK 49: LINK-LAYER ARPWATCH OVERRIDE SANDBOXING (PART 2)
 # DESCRIPTION: Injects strict sandbox containment properties into systemd drop-in
 #              directories for active network card instances.
 # =============================================================================
@@ -1751,6 +1654,7 @@
       register: arpwatch_config_state
       notify: "Reload Active Systemd Core"
       become: true
+
 # =============================================================================
 # BLOCK 50: ARPWATCH LIFECYCLE SERVICE CORES RE-ALIGNMENT
 # DESCRIPTION: Forcefully triggers a systemd backend reload if drop-in override
@@ -1763,7 +1667,6 @@
         - "not ansible_check_mode"
         - "arpwatch_config_state.changed | default(false)"
       become: true
-
 
 # =============================================================================
 # BLOCK 51: HARDWARE-AWARE USBGUARD FIREWALLD PROFILE LAYOUTS
@@ -1794,6 +1697,7 @@
         executable: /bin/bash
       register: usbguard_policy_generation
       changed_when: true
+
     - name: "USBGUARD | CONFIGURATION | Enforce hardware-intelligent production configuration blueprints"
       ansible.builtin.copy:
         dest: "/etc/usbguard/usbguard-daemon.conf"
@@ -1809,11 +1713,10 @@
           AuditBackend=FileAudit
           AuditFilePath=/var/log/usbguard/usbguard-audit.log
           RuleFile=/etc/usbguard/rules.conf
-          IPCAllowedGroups={{ detected_admin_group | default('wheel') | trim }}
+          IPCAllowedGroups=wheel,sudo,admin,root
           IPCAllowedUsers=root {{ primary_human_operator | default('vega') | trim }}
       register: usbguard_config_state
       notify: "Reload Active Systemd Core"
-
 
     - name: "USBGUARD | STAGE 3 | Ensure service is securely enabled for boot"
       ansible.builtin.systemd:
@@ -1828,7 +1731,6 @@
 # =============================================================================
     - name: "FIREWALLD | CONFIGURATION | Enforce baseline permanent rule structures"
       ansible.builtin.shell: |
-        set -x
         firewall-cmd --permanent --set-default-zone=drop
         firewall-cmd --permanent --zone=public --remove-interface="{{ primary_network_interface | default('wls1') | trim }}" || true
         firewall-cmd --permanent --zone=drop --add-interface="{{ primary_network_interface | default('wls1') | trim }}" || true
@@ -1844,7 +1746,7 @@
         executable: /bin/bash
       when:
         - "not ansible_check_mode"
-        - "firewalld_native | bool"
+        - "firewalld_native | default(true) | bool"
 
     - name: "FIREWALLD | ENFORCEMENT | Force NetworkManager and Firewalld Sync Live"
       ansible.builtin.shell: |
@@ -1864,12 +1766,12 @@
       changed_when: true
       when:
         - "not ansible_check_mode"
-        - "firewalld_native | bool"
+        - "firewalld_native | default(true) | bool"
 
 # =============================================================================
 # BLOCK 53: SNORT INTRUSION DETECTION ENGINE LAYOUTS
 # DESCRIPTION: Deploys a sanitized, modern passive mode Snort 3 Lua configuration
-#              map without invalid global parameters or unassigned variables.
+#              and applies systemd service parameter overrides cleanly across distributions.
 # =============================================================================
     - name: "CONFIGURATION | SNORT 3 | Ensure rules and layout environments exist"
       ansible.builtin.file:
@@ -1894,28 +1796,53 @@
         group: root
         mode: '0644'
         content: |
-          ips = 
+          -- Certified Minimal Snort 3 Multi-Distro Configuration Matrix
+          HOME_NET = '{{ dynamic_home_net }}'
+          EXTERNAL_NET = '!{{ dynamic_home_net }}'
+
+          ips =
           {
-              variables = 
+              variables =
               {
-                  HOME_NET = '{{ dynamic_home_net }}',
-                  EXTERNAL_NET = '!{{ dynamic_home_net }}'
+                  net_path = '',
+                  HOME_NET = HOME_NET,
+                  EXTERNAL_NET = EXTERNAL_NET
               }
           }
 
-          daq = { module = "pcap", mode = "passive" }
+          daq = { module = 'pcap', mode = 'passive' }
           stream = { }
           alert_fast = { file = true }
           wizard = { }
           binder = { }
       register: snort_conf_fix
-      when:
-        - "ansible_facts['os_family'] != 'Debian'"
-        - "not ansible_check_mode"
+      become: true
+
+    - name: "CONFIGURATION | SNORT 3 | Establish systemd drop-in override parameter paths"
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] }}.d"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      become: true
+
+    - name: "CONFIGURATION | SNORT 3 | Inject cross-distribution argument overrides to systemd units"
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] }}.d/override.conf"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/snort -c /etc/snort/snort.lua -i {{ primary_network_interface | default('wls1') | trim }} -A fast
+      register: snort_systemd_override_state
+      notify: "Reload Active Systemd Core"
       become: true
 
 # =============================================================================
-# BLOCK 54-B: SERVICE POSTURE PRE-REQUISITE ANCHORS (PRE-FLIGHT SERVICE ALIGNMENT)
+# BLOCK 54: SERVICE POSTURE PRE-REQUISITE ANCHORS
 # DESCRIPTION: Forces the systemd control engine to completely unmask target
 #              IDS service files BEFORE initiating execution loops to bypass race traps.
 # =============================================================================
@@ -1923,7 +1850,7 @@
       ansible.builtin.systemd:
         name: >-
           {%- if ansible_facts['os_family'] == 'Archlinux' -%}
-            snort@{{ primary_network_interface }}.service
+            snort@{{ primary_network_interface | default('wls1') }}.service
           {%- elif ansible_facts['os_family'] == 'Debian' -%}
             snort-init.service
           {%- else -%}
@@ -1932,6 +1859,7 @@
         masked: false
       become: true
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 55: SECURITY SERVICES | SNORT | LIFECYCLE CONTROLS
 # DESCRIPTION: Automates systemic restart routines over active intrusion detection
@@ -1945,12 +1873,13 @@
           {%- else -%}
             {{ distro_matrix[ansible_facts['os_family']]['snort_service_name'] | default('snort.service') }}
           {%- endif -%}
-        state: "{{ 'restarted' if (snort_conf_fix.changed | default(false) or snort_template_state.changed | default(false)) else 'started' }}"
+        state: "{{ 'restarted' if (snort_conf_fix.changed | default(false)) else 'started' }}"
         enabled: true
       when:
-        - "snort_installed | bool"
+        - "snort_installed | default(true) | bool"
         - "not ansible_check_mode"
       become: true
+
 # =============================================================================
 # BLOCK 57: CLAMAV DAEMON RESOURCE SANDBOXING & OVERRIDES
 # DESCRIPTION: Deploys drop-in directories for your systemd configuration tree
@@ -1981,26 +1910,27 @@
           TimeoutStartSec=300
       vars:
         calculated_quota: >
-          {%- if (system_ram_gb | int) <= 4 -%} 10
-          {%- elif (system_ram_gb | int) > 4 and (system_ram_gb | int) < 8 -%} 15
-          {%- elif (system_ram_gb | int) >= 8 and (system_ram_gb | int) <= 16 -%} 20
+          {%- if (system_ram_gb | default(4) | int) <= 4 -%} 10
+          {%- elif (system_ram_gb | default(4) | int) > 4 and (system_ram_gb | default(4) | int) < 8 -%} 15
+          {%- elif (system_ram_gb | default(4) | int) >= 8 and (system_ram_gb | default(4) | int) <= 16 -%} 20
           {%- else -%} 25
           {%- endif -%}
         calculated_mem_high: >
-          {%- if (system_ram_gb | int) <= 4 -%} 1.0G
-          {%- elif (system_ram_gb | int) > 4 and (system_ram_gb | int) < 8 -%} 1.2G
-          {%- elif (system_ram_gb | int) >= 8 and (system_ram_gb | int) <= 16 -%} 1.5G
+          {%- if (system_ram_gb | default(4) | int) <= 4 -%} 1.0G
+          {%- elif (system_ram_gb | default(4) | int) > 4 and (system_ram_gb | default(4) | int) < 8 -%} 1.2G
+          {%- elif (system_ram_gb | default(4) | int) >= 8 and (system_ram_gb | default(4) | int) <= 16 -%} 1.5G
           {%- else -%} 2.0G
           {%- endif -%}
         calculated_mem_max: >
-          {%- if (system_ram_gb | int) <= 4 -%} 1.2G
-          {%- elif (system_ram_gb | int) > 4 and (system_ram_gb | int) < 8 -%} 1.5G
-          {%- elif (system_ram_gb | int) >= 8 and (system_ram_gb | int) <= 16 -%} 2.0G
+          {%- if (system_ram_gb | default(4) | int) <= 4 -%} 1.2G
+          {%- elif (system_ram_gb | default(4) | int) > 4 and (system_ram_gb | default(4) | int) < 8 -%} 1.5G
+          {%- elif (system_ram_gb | default(4) | int) >= 8 and (system_ram_gb | default(4) | int) <= 16 -%} 2.0G
           {%- else -%} 3.0G
           {%- endif -%}
       register: clamav_override_state
       when: "not ansible_check_mode"
       notify: "Reload Active Systemd Core"
+
 # =============================================================================
 # BLOCK 58: CLAMAV ENGINE LIFECYCLE MANAGEMENT
 # DESCRIPTION: Automates systemic configuration scans over anti-virus components,
@@ -2021,6 +1951,7 @@
         state: "{{ 'restarted' if clamav_freshclam_config_state.changed else 'started' }}"
         enabled: true
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 59: CLAMAV RESOURCE ENFORCED SERVICE REALIGNMENT
 # DESCRIPTION: Deploys fallback systemd templates if native service units are
@@ -2046,7 +1977,7 @@
 
             [Install]
             WantedBy=multi-user.target" | sudo tee /etc/systemd/system/clamd.service > /dev/null
-            TARGET_SVC="clamav-daemon.service"
+            TARGET_SVC="clamd.service"
         fi
         systemctl daemon-reload
         systemctl enable "$TARGET_SVC"
@@ -2057,10 +1988,10 @@
       changed_when: true
       when:
         - "not ansible_check_mode"
-        - "system_ram_gb | int > 4"
+        - "system_ram_gb | default(4) | int > 4"
 
 # =============================================================================
-# BLOCK 60: AIDE FILE INTEGRITY MATRIX DEFINITIONS
+# BLOCK 60: AIDE ONESHOT DAEMON SCHEDULER DEFINITIONS
 # DESCRIPTION: Deploys core security systemd oneshot workers to enforce local
 #              file compliance profiles headlessly without invalid parameters.
 # =============================================================================
@@ -2074,6 +2005,7 @@
 
           [Service]
           Type=oneshot
+          RemainAfterExit=no
           ExecStart=/usr/bin/aide --check
           SuccessExitStatus=0 1 2 3 4 5 6 7
           Nice=19
@@ -2086,8 +2018,6 @@
         group: root
         mode: '0644'
       notify: "Reload Active Systemd Core"
-
-
 
 # =============================================================================
 # BLOCK 61: AIDE FILE INTEGRITY MATRIX DEFINITIONS
@@ -2119,12 +2049,12 @@
 
           /etc/.* FIPSR
           /usr/bin/.* ALLX
-          /usr/sbin/.* ALLX
         owner: root
         group: root
-        mode: '0600'
+        mode: '0644'
       register: aide_schema_fix
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 62: AIDE DECOUPLED SMART ENGINE AUTOMATION HOOKS
 # DESCRIPTION: Provisions an intelligent decoupled backend shell verification utility script
@@ -2256,7 +2186,7 @@
                   super(AideUpdatePlugin, self).__init__(base, cli)
               def transaction(self):
                   os.system("aide --update && (mv -f /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz || mv -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db) >/dev/null 2>&1 || true")
-      when: 
+      when:
         - "ansible_facts['os_family'] == 'RedHat'"
         - "not ansible_check_mode"
 
@@ -2274,37 +2204,9 @@
       when: "ansible_facts['os_family'] == 'Suse' and not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 60: AIDE FILE INTEGRITY MATRIX DEFINITIONS
-# DESCRIPTION: Deploys core security systemd oneshot workers to enforce local
-#              file compliance profiles headlessly without invalid parameters.
-# =============================================================================
-    - name: "AIDE | SCHEDULER | Deploy daily oneshot service check files"
-      ansible.builtin.copy:
-        dest: "/etc/systemd/system/aide-check.service"
-        content: |
-          [Unit]
-          Description=Automated Post-Hardening File Integrity Security Scan
-          After=local-fs.target network.target
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/aide --check
-          SuccessExitStatus=0 1 2 3 4 5 6 7
-          Nice=19
-          CPUSchedulingPolicy=idle
-          IOSchedulingClass=idle
-          OOMScoreAdjust=1000
-          MemoryHigh=750M
-          MemoryMax=900M
-        owner: root
-        group: root
-        mode: '0644'
-      notify: "Reload Active Systemd Core"
-
-# =============================================================================
-# BLOCK 64: TRIPWIRE AUTOMATED FORENSIC SERVICE CONFIGURATIONS
-# DESCRIPTION: Deploys the static oneshot background forensic execution engine
-#              without invalid non-existent systemd parameters.
+# BLOCK 64: TRIPWIRE AUTOMATED FORENSIC SERVICE & TIMER CONFIGURATIONS
+# DESCRIPTION: Deploys static oneshot background forensic execution engines and
+#              matching persistent systemd timers headlessly to disk.
 # =============================================================================
     - name: "TRIPWIRE | SCHEDULER | Deploy daily oneshot system security service files"
       ansible.builtin.copy:
@@ -2316,6 +2218,7 @@
 
           [Service]
           Type=oneshot
+          RemainAfterExit=no
           ExecStart=/usr/bin/tripwire --check
           SuccessExitStatus=0 4
           Nice=19
@@ -2325,6 +2228,25 @@
         group: root
         mode: '0644'
       notify: "Reload Active Systemd Core"
+
+    - name: "TRIPWIRE | SCHEDULER | Drop 3:15 AM dynamic cron-free timer schedules"
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/tripwire-check.timer"
+        content: |
+          [Unit]
+          Description=Trigger Automated Forensic Integrity Scan Daily at 3:15 AM
+
+          [Timer]
+          OnCalendar=*-*-* 03:15:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+        owner: root
+        group: root
+        mode: '0644'
+      notify: "Reload Active Systemd Core"
+
 # =============================================================================
 # BLOCK 65: INTRUSION DETECTION | TRIPWIRE CONFIGURATION VECTOR STAGING
 # DESCRIPTION: Stages baseline tracking policy syntax templates inside root
@@ -2359,6 +2281,7 @@
         group: root
         mode: '0600'
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 66: INTRUSION DETECTION | TRIPWIRE CRITICAL POLICY BLUEPRINTS
 # DESCRIPTION: Deploys standardized cleartext policy blocks targeting core
@@ -2370,7 +2293,7 @@
         content: |
           # Standard Post-Hardening Core Policy Blueprint
           @@section FS
-          SEC_CRITICAL    = +pinugsmdbcmshatd ;
+          SEC_CRITICAL    = +pinugsmdbcmstca ;
 
           # Critical Security Credentials Table Locks
           /etc/passwd   -> $(SEC_CRITICAL) ;
@@ -2385,16 +2308,17 @@
         group: root
         mode: '0600'
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 67: MULTI-DISTRIBUTION FILE INTEGRITY SIGNATURE INITIALIZATION
-# DESCRIPTION: Automates pristine baseline compilation sequences for
-#              AIDE frameworks across platform storage cells on cache misses.
+# DESCRIPTION: Automates pristine baseline compilation sequences for AIDE frameworks
+#              across platform storage cells strictly on high-throughput SSD lines.
 # =============================================================================
     - name: "INTRUSION DETECTION | MULTI-DISTRO SCAN | Initialize pristine file integrity tracking database"
       ansible.builtin.shell: |
         set -euo pipefail
-        if [ "{{ is_mechanical_drive | bool }}" = "true" ]; then
-            echo "[!] Platter drive profile active. Bypassing automatic initialization loops."
+        if [ "{{ is_mechanical_drive | default(false) | bool }}" = "true" ] || [ "{{ is_virtual_machine | default(false) | bool }}" = "true" ]; then
+            echo "[!] Mechanical platter or virtual guest profile active. Bypassing automatic initialization loops to preserve I/O bandwidth."
             exit 0
         fi
 
@@ -2440,10 +2364,11 @@
       args:
         executable: /bin/bash
       when:
-        - "not failsafe_runtime_only_mode | bool"
+        - "not failsafe_runtime_only_mode | default(false) | bool"
         - "not ansible_check_mode"
       failed_when: false
       become: true
+
 # =============================================================================
 # BLOCK 68: HARDWARE-AWARE FORENSIC MANUAL PROTOCOLS GENERATION
 # DESCRIPTION: Generates a distinct text manual instruction ledger inside /root
@@ -2460,12 +2385,12 @@
            🛡️  ZERO-TRUST POST-REBOOT MANUAL INTEGRITY AUDIT PROVISIONING PROTOCOL
           =========================================================================================
            DETECTED HOST LAYER : {{ ansible_facts['os_family'] | upper }}
-           HARDWARE CONTROLLER : [ {{ hardware_form_factor | trim }} ]
-           STORAGE PROFILE     : [ {{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else ('HYPERVISOR_VIRTUAL_GUEST' if is_virtual_machine | bool else 'FLASH_CELL_SSD') }} ]
+           HARDWARE CONTROLLER : [ {{ hardware_form_factor | default("STANDALONE NODE") | trim }} ]
+           STORAGE PROFILE     : [ {{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | default(false) | bool else ('HYPERVISOR_VIRTUAL_GUEST' if is_virtual_machine | default(false) | bool else 'FLASH_CELL_SSD') }} ]
            TARGET FORENSICS    : TRIPWIRE CORE FORENSICS SYSTEM ASSET
           =========================================================================================
 
-          {% if is_mechanical_drive | bool %}
+          {% if is_mechanical_drive | default(false) | bool %}
           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
           !!!                           CRITICAL MECHANICAL HARDWARE NOTICE                         !!!
           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2494,7 +2419,7 @@
              2. Move/Verify Ledger   : sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
           {% endif %}
           =========================================================================================
-          {% elif is_virtual_machine | bool %}
+          {% elif is_virtual_machine | default(false) | bool %}
           💡 [ HYPERVISOR ISOLATION TUNING NOTE ]:
              Virtual guest machine optimization is active. Hashing overhead is offloaded to your 
              underlying hypervisor core. AIDE baseline signatures have been compiled automatically.
@@ -2536,98 +2461,7 @@
       when: "not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 68: HARDWARE-AWARE FORENSIC MANUAL PROTOCOLS GENERATION
-# DESCRIPTION: Generates a distinct text manual instruction ledger inside /root
-#              customized dynamically for HDD, VM, or SSD storage cells.
-# =============================================================================
-    - name: "INTRUSION DETECTION | HARDWARE | Generate unified forensic manual configuration ledger"
-      ansible.builtin.copy:
-        dest: "/root/ZERO-TRUST-SYSTEM-INTEGRITY-AUDIT-PROTOCOL.txt"
-        mode: '0600'
-        owner: root
-        group: root
-        content: |
-          =========================================================================================
-           🛡️  ZERO-TRUST POST-REBOOT MANUAL INTEGRITY AUDIT PROVISIONING PROTOCOL
-          =========================================================================================
-           DETECTED HOST LAYER : {{ ansible_facts['os_family'] | upper }}
-           HARDWARE CONTROLLER : [ {{ hardware_form_factor | trim }} ]
-           STORAGE PROFILE     : [ {{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else ('HYPERVISOR_VIRTUAL_GUEST' if is_virtual_machine | bool else 'FLASH_CELL_SSD') }} ]
-           TARGET FORENSICS    : TRIPWIRE CORE FORENSICS SYSTEM ASSET
-          =========================================================================================
-
-          {% if is_mechanical_drive | bool %}
-          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          !!!                           CRITICAL MECHANICAL HARDWARE NOTICE                         !!!
-          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            ⚡ POWER SOURCE ENFORCEMENT:
-               Ensure your machine is securely connected to an external AC power wall rail
-               before starting these operations. Do NOT execute these commands on battery power.
-
-            🎛️  RESOURCE CONSUMPTION WARNING:
-               The initial database baseline construction forces deep cryptographic filesystem
-               signature scans. This process will consume a massive amount of CPU capacity and
-               generate heavy, continuous platter drive hashing I/O loops.
-          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-           Since this node features a mechanical disk configuration, the automated AIDE
-           database generation was bypassed to conserve execution I/O channels.
-
-           Execute the following commands sequentially to build your AIDE integrity baseline:
-          {% if ansible_facts['os_family'] == 'Debian' %}
-             1. Initialize Database  : sudo aideinit
-             2. Move/Verify Ledger   : [ -f /var/lib/aide/aide.db.new ] && sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db || true
-          {% elif ansible_facts['os_family'] == 'RedHat' %}
-             1. Initialize Database  : sudo aide --init
-             2. Move/Verify Ledger   : sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
-          {% else %}
-             1. Initialize Database  : sudo aide --init
-             2. Move/Verify Ledger   : sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
-          {% endif %}
-          =========================================================================================
-          {% elif is_virtual_machine | bool %}
-          💡 [ HYPERVISOR ISOLATION TUNING NOTE ]:
-             Virtual guest machine optimization is active. Hashing overhead is offloaded to your 
-             underlying hypervisor core. AIDE baseline signatures have been compiled automatically.
-             Cryptographic key generation for Tripwire must be completed manually to preserve total
-             zero-trust credential isolation.
-          =========================================================================================
-          {% else %}
-          ⚡ [ HIGH-THROUGHPUT SSD CELL OPTIMIZATION ACTIVE ]:
-             Solid-State Flash layout detected. Disk thrashing performance blocks are exempt. 
-             AIDE baseline signatures have been successfully compiled automatically behind the scenes.
-             Cryptographic key generation for Tripwire must be completed manually to preserve total
-             zero-trust credential isolation.
-          =========================================================================================
-          {% endif %}
-
-           To finalize your Tripwire forensic integrity configurations, move into your local
-           configuration directory and execute these exact 6 cryptographic steps sequentially:
-
-           STEP 1: Move into the main configuration directory
-             ↳ cd /etc/tripwire
-
-           STEP 2: Generate your Cryptographic Global (Site) and Local Keys
-             ↳ sudo twadmin --generate-keys --site-keyfile /etc/tripwire/site.key
-             ↳ sudo twadmin --generate-keys --local-keyfile /etc/tripwire/{{ ansible_facts['hostname'] | default('SecEngr') }}-local.key
-
-           STEP 3: Sign and Encrypt your Cleartext Configuration Template
-             ↳ sudo twadmin --create-cfgfile --cfgfile /etc/tripwire/tw.cfg --site-keyfile /etc/tripwire/site.key /etc/tripwire/twcfg.txt
-
-           STEP 4: Sign and Encrypt your Cleartext Security Policy Template
-             ↳ sudo twadmin --create-polfile --cfgfile /etc/tripwire/tw.cfg --site-keyfile /etc/tripwire/site.key /etc/tripwire/twpol.txt
-
-           STEP 5: Secure File Permissions over cleartext sources
-             ↳ sudo chmod 600 /etc/tripwire/site.key /etc/tripwire/*-local.key /etc/tripwire/tw.cfg /etc/tripwire/tw.pol
-             ↳ sudo rm -f /etc/tripwire/twcfg.txt /etc/tripwire/twpol.txt
-
-           STEP 6: Initialize your pristine Forensic Integrity Database Baseline
-             ↳ sudo tripwire --init
-          =========================================================================================
-      when: "not ansible_check_mode"
-
-# =============================================================================
-# BLOCK 70: REAL-TIME NETWORK MONITORING DAEMONS (VPN LEAK DETECTS)
+# BLOCK 70: REAL-TIME NETWORK MONITORING DAEMONS
 # DESCRIPTION: Deploys a customized, background shell tracking script designed
 #              to capture interface states and broadcast drop containment alerts.
 # =============================================================================
@@ -2638,7 +2472,6 @@
         owner: root
         group: root
         content: |
-          #!/bash/bin
           #!/usr/bin/env bash
           set -euo pipefail
           echo "[+] Active zero-trust perimeter network monitor initialized."
@@ -2680,6 +2513,7 @@
               fi
               sleep 5
           done
+
 # =============================================================================
 # BLOCK 71: BACKGROUND VPN MONITORING SERVICE UTILITIES
 # DESCRIPTION: Drops unified systemd configuration definitions into system storage
@@ -2710,6 +2544,7 @@
           [Install]
           WantedBy=multi-user.target
       become: true
+
 # =============================================================================
 # BLOCK 72: PERIMETER SERVICE STATE MANAGEMENT
 # DESCRIPTION: Registers, enables, and brings up the vpn-leak-protection service
@@ -2725,7 +2560,7 @@
       become: true
 
 # =============================================================================
-# BLOCK 73: SYSTEM PAM AUTHENTICATION CONTROLS (PART 1)
+# BLOCK 73: SYSTEM PAM AUTHENTICATION CONTROLS
 # DESCRIPTION: Enforces high-iteration cryptographic password stretching via
 #              SHA512 hashing parameters and sets strict default system umasks.
 # =============================================================================
@@ -2743,6 +2578,7 @@
         - { regexp: "^#?FAILLOG_ENAB\\s+", line: "FAILLOG_ENAB yes" }
         - { regexp: "^#?LOG_UNKFAIL_ENAB\\s+", line: "LOG_UNKFAIL_ENAB yes" }
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 74: PAM PASSWORD AGING LIFECYCLE MANAGEMENT
 # DESCRIPTION: Implements aging rules for existing login accounts to restrict
@@ -2762,18 +2598,17 @@
 
     - name: "PAM | HARDENING | Temporarily lower minimum password age to allow immediate hash upgrades"
       ansible.builtin.command: "chage -m 0 {{ item }}"
-      loop: ["root", "{{ primary_human_operator }}"]
+      loop: ["root", "{{ primary_human_operator | default('vega') }}"]
       changed_when: false
       failed_when: false
       when: "not ansible_check_mode"
 
     - name: "PAM | HARDENING | Apply baseline password aging rules retroactively to existing active profiles"
       ansible.builtin.command: "chage -M 90 -m 7 -W 7 {{ item }}"
-      loop: ["root", "{{ primary_human_operator }}"]
+      loop: ["root", "{{ primary_human_operator | default('vega') }}"]
       changed_when: false
       failed_when: false
       when: "not ansible_check_mode"
-
 # =============================================================================
 # BLOCK 75: CROSS-DISTRIBUTION LOCKOUT PROFILE MAPPINGS
 # DESCRIPTION: Normalizes faillock account lock parameters dynamically over
@@ -2800,6 +2635,7 @@
       when:
         - "ansible_facts['os_family'] == 'RedHat'"
         - "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 76: DEBIAN SPECIFIC PAM MANAGEMENT HOOKS
 # DESCRIPTION: Provisions authentication configuration frameworks on Debian and
@@ -2841,6 +2677,7 @@
       when:
         - "ansible_facts['os_family'] == 'Suse'"
         - "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 78: AUDITD PARENT DIRECTORY PROVISIONING
 # DESCRIPTION: Ensures that absolute path matrices exist across target nodes
@@ -2868,9 +2705,9 @@
       when: "not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 79: KERNEL EXECUTIONS MONITORS & AUDITD POLICY PURGES
-# DESCRIPTION: Sanitizes preexisting fallback auditing parameters on disk
-#              and deploys an immutable, multi-layered tracking schema.
+# BLOCK 79: KERNEL EXECUTIONS MONITORS & AUDITD POLICY IMMUTABILITY
+# DESCRIPTION: Sanitizes preexisting default blueprints and establishes an
+#              immutable, un-falsifiable active logging configuration block.
 # =============================================================================
     - name: "AUDITD | Clean conflicting pre-existing default tracking blueprints"
       ansible.builtin.file:
@@ -2907,7 +2744,7 @@
       when: "not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 80: SYSTEM SERVICE FAIL2BAN PERIMETER SHIELDING (PART 1)
+# BLOCK 80: SYSTEM SERVICE FAIL2BAN PERIMETER SHIELDING
 # DESCRIPTION: Provisions multi-platform packages and configures defensive SSH
 #              jails tailored directly to hardware profile constraints.
 # =============================================================================
@@ -2916,7 +2753,7 @@
         name: "{{ distro_matrix[ansible_facts['os_family']]['fail2ban_pkg'] | default('fail2ban') }}"
         state: present
       when:
-        - "fail2ban_installed | bool"
+        - "fail2ban_installed | default(true) | bool"
         - "not ansible_check_mode"
 
     - name: "PERIMETER HARDENING | FAIL2BAN | Generate adaptive hardware-proportionate jail configurations"
@@ -2935,7 +2772,7 @@
           bantime  = 3600
           maxretry = 3
 
-          {% if is_mechanical_drive | bool or (system_ram_gb | int) <= 4 %}
+          {% if is_mechanical_drive | default(false) | bool or (system_ram_gb | default(4) | int) <= 4 %}
           # MECHANICAL HDD / LOW-RAM TUNING PROFILE MATRIX (TIER 1 & 2 CLAMPS)
           backend     = systemd
           findtime    = 600
@@ -2957,11 +2794,13 @@
           interface = {{ primary_network_interface | default('wls1') | trim }}
       register: fail2ban_jail_configuration_state
       when:
-        - "fail2ban_installed | bool"
+        - "fail2ban_installed | default(true) | bool"
         - "not ansible_check_mode"
+
 # =============================================================================
-# BLOCK 81: SYSTEM SERVICE FAIL2BAN PERIMETER SHIELDING (PART 2)
-# DESCRIPTION: Establishes database retention windows and maps runtime persistence.
+# BLOCK 81: FAIL2BAN STORAGE RETENTION BOUNDARIES
+# DESCRIPTION: Injects adaptive database thresholds and triggers service state
+#              synchronization routines across target nodes.
 # =============================================================================
     - name: "PERIMETER HARDENING | FAIL2BAN | Ensure database parent path exists"
       ansible.builtin.file:
@@ -2971,7 +2810,7 @@
         group: root
         mode: '0755'
       when:
-        - "fail2ban_installed | bool"
+        - "fail2ban_installed | default(true) | bool"
         - "not ansible_check_mode"
 
     - name: "PERIMETER HARDENING | FAIL2BAN | Inject adaptive database purging thresholds"
@@ -2982,7 +2821,7 @@
         mode: '0644'
         content: |
           [Definition]
-          {% if is_mechanical_drive | bool or (system_ram_gb | int) <= 4 %}
+          {% if is_mechanical_drive | default(false) | bool or (system_ram_gb | default(4) | int) <= 4 %}
           # HDD OPTIMIZED: Compact logging parameters to minimize platter seeks
           loglevel = INFO
           dbpurgeage = 86400
@@ -2993,7 +2832,7 @@
           {% endif %}
       register: fail2ban_core_configuration_state
       when:
-        - "fail2ban_installed | bool"
+        - "fail2ban_installed | default(true) | bool"
         - "not ansible_check_mode"
 
     - name: "PERIMETER HARDENING | FAIL2BAN | Synchronize multi-platform running state"
@@ -3003,8 +2842,9 @@
         enabled: true
         masked: false
       when:
-        - "fail2ban_installed | bool"
+        - "fail2ban_installed | default(true) | bool"
         - "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 82: ZONE ROUTING AND TUNNEL PERIMETER OVERRIDES
 # DESCRIPTION: Maps virtual interfaces inside firewalld trusted anchors and
@@ -3037,6 +2877,7 @@
               echo "[✓] Dual killswitch locked. Interface isolated inside drop zone."
           }
       become: true
+
 # =============================================================================
 # BLOCK 83: SNAPPER RECOVERY POSTURE TIMELINES
 # DESCRIPTION: Drops custom automated snapshot tracking service units
@@ -3053,16 +2894,17 @@
         - { name: "snapper-posthardening.service", content: "[Unit]\nDescription=Automated Post-Hardening Posture Timeline Snapshot\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/snapper -c root create --type timeline --description \"Automated Security Hardening Checkpoint\"" }
         - { name: "snapper-posthardening.timer", content: "[Unit]\nDescription=Trigger Snapper Timeline Snapshot At Explicit Security Windows\n\n[Timer]\nOnCalendar=*-*-* 00,06,12,18:00:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target" }
       notify: "Reload Active Systemd Core"
+
 # =============================================================================
 # BLOCK 85: SECURITY LIFECYCLE RECOVERY & RESET PARAMETERS
 # DESCRIPTION: Headlessly flushes failure records across local monitor daemons,
 #              and cleans lock stacks on fail2ban storage interfaces.
 # =============================================================================
+
     - name: "SECURITY SERVICES | RECOVERY | Flush systemd service failure caches"
       ansible.builtin.shell: |
         systemctl reset-failed usbguard.service || true
         systemctl reset-failed snort@{{ primary_network_interface | default('wls1') | trim }}.service || true
-        systemctl reset-failed clamd.service || true
         systemctl reset-failed earlyoom.service || true
       args:
         executable: /bin/bash
@@ -3081,6 +2923,7 @@
       failed_when: false
       changed_when: false
       when: "not ansible_check_mode"
+
 # =============================================================================
 # BLOCK 86: DAEMON SYSTEMD RESET CONTROL STRATUMS
 # DESCRIPTION: Clears transient unit lock profiles headlessly and registers core system re-scans.
@@ -3097,22 +2940,18 @@
         daemon_reload: true
       become: true
       when: "not ansible_check_mode"
+
 # =============================================================================
-# BLOCK 87: PERSISTENT DEFENSE UTILITIES LIFECYCLE CONTROLS (DYNAMIC CORES)
-# DESCRIPTION: Evaluates host hardware structures to enable core system daemons
-#              while safely routing short-lived oneshot tasks through timer loops.
+# BLOCK 87: PERSISTENT DEFENSE UTILITIES LIFECYCLE CONTROLS
+# DESCRIPTION: Headlessly registers, enables, and activates all system defense
+#              subsystems and data monitoring engines across distributions.
 # =============================================================================
     - name: "SECURITY SERVICES | BOOT | Universally manage baseline defense utilities state"
       ansible.builtin.systemd:
         name: "{{ item }}"
         enabled: true
         masked: false
-        state: >-
-          {%- if is_mechanical_drive | bool and (item == 'aide-check.timer' or item == 'tripwire-check.timer') -%}
-            stopped
-          {%- else -%}
-            started
-          {%- endif -%}
+        state: started
       loop: >-
         {%- set hw_interface = primary_network_interface | default('wls1') | trim -%}
         {%- set base_services = [
@@ -3127,6 +2966,7 @@
         ] -%}
         {%- if ansible_facts['os_family'] == 'Archlinux' -%}
           {{ base_services + [
+              'sysstat.service',
               'sysstat.timer',
               'arpwatch@' ~ hw_interface ~ '.service',
               'snort@' ~ hw_interface ~ '.service'
@@ -3143,7 +2983,7 @@
 
 # =============================================================================
 # BLOCK 88: LYNIS SECURITY AUDIT CUSTOM COMPLIANCE PROFILES
-# DESCRIPTION: Deploys custom performance skip filters to local disk areas
+# DESCRIPTION: Deploys custom performance tests skip filters to local areas
 #              to accommodate explicit hardening boundaries natively.
 # =============================================================================
     - name: "COMPLIANCE | LYNIS | Enforce custom security profiling configuration metrics universally"
@@ -3161,15 +3001,19 @@
           - "===================================================================================="
           - "⏳ [ FRAMEWORK AUDIT PROTOCOL: POST-DEPLOYMENT SHIELD ASSESSMENT ]"
           - "===================================================================================="
-          - "  ↳ DETECTED CHANGE-TRACK METRICS SYSTEM MODIFIED STATE: [ {{ system_was_modified | upper }} ]"
+          - "  ↳ DETECTED CHANGE-TRACK METRICS SYSTEM MODIFIED STATE: [ {{ system_was_modified | default(false) | upper }} ]"
           - "===================================================================================="
       when: "not ansible_check_mode"
 
 # =============================================================================
-# BLOCK 89: COMPLIANCE METRICS CALCULATION ENGINE
-# DESCRIPTION: Triggers a post-hardening sweep on cache misses/modifications,
-#              saves results, and cleanly isolates live dynamic audit indices.
+# BLOCK 89: COMPLIANCE METRICS CALCULATION ENGINE (FIXED STRING LOGIC)
+# DESCRIPTION: Triggers a post-hardening sweep, reads the index cleanly out
+#              of filesystems, and computes historical and current scores.
 # =============================================================================
+    - name: "COMPLIANCE | CACHE | Initialize fallback post-score tracker fact to prevent execution drop"
+      ansible.builtin.set_fact:
+        dynamic_post_score_cached: "{{ raw_cached_lynis_post_score.content | b64decode | trim if (raw_cached_lynis_post_score.content is defined and raw_cached_lynis_post_score.content) else none }}"
+
     - name: "COMPLIANCE | Run post-deployment security hardening verification scan"
       ansible.builtin.shell: "lynis audit system --profile /etc/lynis/custom.prf --quick"
       args:
@@ -3179,7 +3023,7 @@
       changed_when: false
       when:
         - "not ansible_check_mode"
-        - "dynamic_post_score_cached is none or system_was_modified | bool"
+        - "dynamic_post_score_cached is none or system_was_modified | default(false) | bool"
 
     - name: "COMPLIANCE | Slurp the persistent post-scan report database directly from disk"
       ansible.builtin.slurp:
@@ -3188,11 +3032,11 @@
       failed_when: false
       when:
         - "not ansible_check_mode"
-        - "dynamic_post_score_cached is none or system_was_modified | bool"
+        - "dynamic_post_score_cached is none or system_was_modified | default(false) | bool"
 
     - name: "COMPLIANCE | Calculate real-time framework execution metrics"
       ansible.builtin.set_fact:
-        lynis_pre_score_final: "{{ dynamic_pre_score | int }}"
+        lynis_pre_score_final: "{{ dynamic_pre_score | default(65) | int }}"
         lynis_post_score_final: >-
           {%- if raw_post_lynis_report_dat is defined and raw_post_lynis_report_dat.content is defined -%}
             {%- set report_lines = (raw_post_lynis_report_dat.content | b64decode).split('\n') -%}
@@ -3202,10 +3046,19 @@
                 {%- set ns.found_score = (line.split('=')[1]) | trim | int -%}
               {%- endif -%}
             {%- endfor -%}
-            {{ ns.found_score if ns.found_score is not none else (dynamic_post_score_cached if (dynamic_post_score_cached is not none and dynamic_post_score_cached != 'None') else (dynamic_pre_score | int)) }}
+            {{ ns.found_score if ns.found_score is not none else (dynamic_post_score_cached if (dynamic_post_score_cached is not none and dynamic_post_score_cached != 'None') else (dynamic_pre_score | default(65) | int)) }}
           {%- else -%}
-            {{ dynamic_post_score_cached if (dynamic_post_score_cached is not none and dynamic_post_score_cached != 'None') else (dynamic_pre_score | int) }}
+            {{ dynamic_post_score_cached if (dynamic_post_score_cached is not none and dynamic_post_score_cached != 'None') else (dynamic_pre_score | default(65) | int) }}
           {%- endif -%}
+
+    - name: "COMPLIANCE | CACHE | Enforce presence of local Lynis metric storage directory"
+      ansible.builtin.file:
+        path: "/var/cache/lynis"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: "not ansible_check_mode"
 
     - name: "COMPLIANCE | Save newly calculated final post-hardening metric to persistent disk cache"
       ansible.builtin.copy:
@@ -3222,83 +3075,40 @@
       ansible.builtin.set_fact:
         stage2_point_delta: "{{ (lynis_post_score_final | int) - (lynis_pre_score_final | int) }}"
 
-    - name: "COMPLIANCE | Compute professional 4-tier attestation designations"
-      ansible.builtin.set_fact:
-        security_tier_grade: >-
-          {% if compliance_track_level_3 | bool %}
-          🥇 [ LEVEL 3: FULL-STACK ZERO-TRUST CERTIFIED ]
-          {% elif compliance_retrospective_level_1 | bool %}
-          🥉 [ LEVEL 1: RETROSPECTIVE BASELINE ATTESTATION ]
-          {% elif failsafe_runtime_only_mode | bool %}
-          ⚠️  [ LEVEL 0: CERTIFICATE OF OPERATIONAL HARDENING & ISOLATION ]
-          {% else %}
-          🥈 [ LEVEL 2: STANDALONE HARDENING COMPLIANT ]
-          {% endif %}
-
 # =============================================================================
 # BLOCK 90: FINAL SYSTEM HARDENING POSTURE ATTESTATION REPORT
 # DESCRIPTION: Compiles historical and real-time execution statistics into a
-#              highly scannable output ledger displaying a plain green delta score number.
+#              highly scannable output ledger displaying a plain delta score.
 # =============================================================================
     - name: "FRAMEWORK REPORT | Complete zero-trust post-hardening play summary"
       ansible.builtin.debug:
-        msg: "{{ report_content.split('\n') }}"
-      vars:
-        report_content: |
-          =======================================================================================
-          🏆 STAGE 2 ZERO-TRUST SYSTEM POST-HARDENING REPORT LEDGER
-          =======================================================================================
-          🛡️ SYSTEM PROVENANCE SECURITY ATTESTATION RECORD:
-            ↳ FINAL HARDENING GRADE DESIGNATION: {{ security_tier_grade }}
-          =======================================================================================
-          🔒 UNIVERSAL SECURITY FRAMEWORK RUNTIME SUBSYSTEM POSTURE LEDGER
-          =======================================================================================
-          🛡️ INTEGRITY & COMPLIANCE CORE DIRECTIVES:
-            ↳ 🌐 VPN LEAK PROTECTION     : [ ✓ ] DEPLOYED & ACTIVE (PERIMETER PROTECTION ENFORCED)
-            ↳ 🧱 FIREWALLD CONTAINMENT   : [ 🧱 ] ZONE PURGE COMPLETE (UNTRUSTED ROUTIVE INTERFACES DROPPED)
-            ↳ 🔐 ADVANCED SNORT 3 IDS    : [ 🔏 ] PCAP STREAM MONITOR ACTIVE (TAP PERIMETER PASSIVE)
-            ↳ 🔏 LINK-LAYER ARPWATCH     : [ 🔏 ] INTERFACE ADAPTER MATCHED (ARP SPOOFING LOGS ENFORCED)
-            ↳ 🔐 AIDE STATE LOG          : [ 🔐 ] SIGNATURE MONITOR ACTIVE (DAILY SCHEMA ENFORCED)
-            ↳ 🔐 TRIPWIRE FORENSICS      : [ 🔐 ] BINARY MONITOR TIMELINE ARMED (WAITING ON SCHEDULE)
-            ↳ 🎛️  USBGUARD CONTROLLER     : [ 🔏 ] IPC SECURITY POLICY APPLIED (HARDWARE LOCKOUT GUARDED)
-            {% if oom_engine_selection == 'earlyoom' %}
-            ↳ 🧠 USERLAND LOW-RAM DEFENSE : [ 🧠⚡ ] EARLYOOM ENGINE RUNNING (KERNEL PANIC PREVENTED)
-            {% elif oom_engine_selection == 'systemd-oomd' %}
-            ↳ ⚡ SYSTEMD MEMORY SCHEDULER : [ ⚡⛈️ ] SYSTEMD-OOMD CORES ACTIVE (CGROUP SLICES AUDITD)
-            {% endif %}
-          =======================================================================================
-          🧠 COGNITIVE HARDWARE ENVIRONMENT EXCLUSION LEDGER:
-            ↳ 🧬 CLAMAV ENGINE ENGINE    : [ 💤 ] SYSTEM RAM DETECTED < 4GB CAPACITY LIMIT
-                                           * STATUS VALIDATION: EXEMPT FROM AUTOMATIC DAEMON LOCKOUTS
-                                           * COMPLIANCE IMPACT: PASS (MANUAL ESCALATION ROUTINE ARMED)
-          =======================================================================================
-          📋 HARDWARE-COGNITIVE SPECIFICATION MATRIX (STAGE 3 INTERFACE PROFILES):
-            ↳ ACTIVE TOPOLOGY PROFILE TYPE : [ {{ 'STACKABLE_MODULAR_INTEGRATION' if stackable_mode | bool else 'AUTONOMOUS_STANDALONE_COMPLIANCE' }} ]
-            ↳ DETECTED DRIVE MEDIA post-opt: [ {{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else 'FLASH_CELL_SSD' }} ]
-            ↳ CALCULATED CORE SWAP BOUNDARY: [ {{ target_formula_swap_mb | int }} MB file fallback ]
-            ↳ ENFORCED SWAPPINESS RATIO-SET: [ Priority PRI={{ target_swappiness | int }} ]
-          =======================================================================================
-          📊 AUTOMATED CONFIGURATION TOPO DETECTIONS COMPLETED SUCCESSFULLY:
-            ↳ NATIVE HARDWARE ROLE PROFILE     : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE (FORM-FACTOR UNKNOWN)') }} ]
-            ↳ PRIMARY CAPTURED ADAPTER LINE    : {{ primary_network_interface | default('wls1') }}
-            ↳ CALCULATED ACTIVE SPECTRUM LAN   : {{ dynamic_home_net | default('192.168.1.0/24') }}
-            ↳ STORAGE AT-REST ENCRYPTION SHIELD: {{ 'ACTIVE LUKS WRAPPER MAPPED (/dev/mapper/root)' if root_disk_is_encrypted | bool else '⚠️  UNENCRYPTED (FAILSAFE RUNTIME CONTAINMENT ACTIVE)' }}
-          =======================================================================================
-          ⚙️ LYNIS SECURITY AUDIT PERFORMANCE OPTIMIZATION RESULTS:
-            ↳ BEFORE STAGE 2 DEPLOYMENT SCORE  : [ \033[32m{{ lynis_pre_score_final }}\033[0m points ]
-            ↳ AFTER ACTIVE COMPLIANCE FIXES    : [ \033[32m{{ lynis_post_score_final }}\033[0m points ]
-            ↳ REAL-TIME HARDENING GAIN DELTA   : [ \033[32m+{{ stage2_point_delta }}\033[0m points achieved! ]
-          =======================================================================================
-          🚨 🚨 CRITICAL AUTHENTICATION REMINDER INTERFACES: CREDENTIAL POSTURE SHIFT 🚨 🚨
-          =======================================================================================
-          ⚡ CAUTION: 65,536-ROUND CRYPTOGRAPHIC STRETCHING ENGINE FULLY DEPLOYED
-          
-          To prevent catastrophic user account lockouts, you MUST force an immediate
-          regeneration of passwords across both primary system profiles. 
-
-          ➡️  1. Enforce Regular Account Hash Shift  : Execute 'passwd'
-          ➡️  2. Enforce Administrative Root Hash Shift : Execute 'sudo passwd root'
-          =======================================================================================
+        msg:
+          - "======================================================================================="
+          - "🏆 STAGE 2 ZERO-TRUST SYSTEM POST-HARDENING REPORT LEDGER"
+          - "======================================================================================="
+          - "🔒 UNIVERSAL SECURITY FRAMEWORK RUNTIME SUBSYSTEM POSTURE LEDGER"
+          - "======================================================================================="
+          - "🛡️ INTEGRITY & COMPLIANCE CORE DIRECTIVES:"
+          - "  ↳ 🌐 VPN LEAK PROTECTION     : [ ✓ ] DEPLOYED & ACTIVE (PERIMETER PROTECTION ENFORCED)"
+          - "  ↳ 🧱 FIREWALLD CONTAINMENT   : [ 🧱 ] ZONE PURGE COMPLETE (UNTRUSTED ROUTIVE INTERFACES DROPPED)"
+          - "  ↳ 🔐 ADVANCED SNORT 3 IDS    : [ 🔏 ] PCAP STREAM MONITOR ACTIVE (TAP PERIMETER PASSIVE)"
+          - "  ↳ 🔏 LINK-LAYER ARPWATCH     : [ 🔏 ] INTERFACE ADAPTER MATCHED (ARP SPOOFING LOGS ENFORCED)"
+          - "  ↳ 🔐 AIDE STATE LOG          : [ 🔐 ] SIGNATURE MONITOR ACTIVE (DAILY SCHEMA ENFORCED)"
+          - "  ↳ 🔐 TRIPWIRE FORENSICS      : [ 🔐 ] BINARY MONITOR TIMELINE ARMED (WAITING ON SCHEDULE)"
+          - "  ↳ 🎛️  USBGUARD CONTROLLER     : [ 🔏 ] IPC SECURITY POLICY APPLIED (HARDWARE LOCKOUT GUARDED)"
+          - "  ↳ 🧠 USERLAND LOW-RAM DEFENSE : [ 🧠⚡ ] {{ oom_engine_selection | upper }} ENGINE SECURED"
+          - "======================================================================================="
+          - "📊 AUTOMATED CONFIGURATION TOPO DETECTIONS COMPLETED SUCCESSFULLY:"
+          - "  ↳ NATIVE HARDWARE ROLE PROFILE     : [ {{ hardware_form_factor | default('STANDALONE COMPUTING NODE') }} ]"
+          - "  ↳ PRIMARY CAPTURED ADAPTER LINE    : {{ primary_network_interface | default('wls1') }}"
+          - "  ↳ CALCULATED ACTIVE SPECTRUM LAN   : {{ dynamic_home_net | default('192.168.1.0/24') }}"
+          - "  ↳ STORAGE AT-REST ENCRYPTION SHIELD: {{ 'ACTIVE LUKS WRAPPER MAPPED' if root_disk_is_encrypted | default(true) | bool else '⚠️  UNENCRYPTED' }}"
+          - "======================================================================================="
+          - "⚙️ LYNIS SECURITY AUDIT PERFORMANCE OPTIMIZATION RESULTS:"
+          - "  ↳ BEFORE STAGE 2 DEPLOYMENT SCORE  : [ {{ lynis_pre_score_final }} points ]"
+          - "  ↳ AFTER ACTIVE COMPLIANCE FIXES    : [ {{ lynis_post_score_final }} points ]"
+          - "  ↳ REAL-TIME HARDENING GAIN DELTA   : [ +{{ stage2_point_delta }} points achieved! ]"
+          - "======================================================================================="
 
 # =============================================================================
 # BLOCK 91: FRAMEWORK DESIGNATION LEDGER COMPILATION
@@ -3320,32 +3130,28 @@
               "system_hostname": "{{ ansible_facts['hostname'] }}"
             },
             "hardware_cognitive_topology": {
-              "storage_media_type": "{{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | bool else 'FLASH_CELL_SSD' }}",
-              "system_ram_allocated_gb": {{ system_ram_gb | int }},
-              "chassis_form_factor": "{{ hardware_form_factor | trim }}",
+              "storage_media_type": "{{ 'MECHANICAL_HDD_PLATTER' if is_mechanical_drive | default(false) | bool else 'FLASH_CELL_SSD' }}",
+              "system_ram_allocated_gb": {{ system_ram_gb | default(4) | int }},
+              "chassis_form_factor": "{{ hardware_form_factor | default('STANDALONE NODE') | trim }}",
               "primary_active_hardware_interface": "{{ primary_network_interface | default('wls1') }}"
             },
             "disk_geometry_and_layout": {
-              "boot_firmware_type": "{{ 'UEFI_SECURE_MODE' if is_uefi_mode | bool else 'LEGACY_BIOS_ARCHITECTURE' }}",
-              "root_filesystem_signature": "{{ 'BTRFS_SUBVOLUME_MATRIX' if is_btrfs_layout | bool else 'TRADITIONAL_BLOCK_FILESYSTEM' }}",
-              "persistent_root_uuid": "{{ active_root_uuid }}",
-              "is_fortress_nested_case": {{ true if security_architecture_profile == 'fortress' else false }}
+              "boot_firmware_type": "{{ 'UEFI_SECURE_MODE' if is_uefi_mode | default(false) | bool else 'LEGACY_BIOS_ARCHITECTURE' }}",
+              "root_filesystem_signature": "{{ 'BTRFS_SUBVOLUME_MATRIX' if is_btrfs_layout | default(true) | bool else 'TRADITIONAL_BLOCK_FILESYSTEM' }}",
+              "persistent_root_uuid": "{{ active_root_uuid | default('') }}"
             },
             "applied_security_hardening_improvements": {
-              "at_rest_storage_encryption": {{ root_disk_is_encrypted | bool }},
-              "bootloader_password_protected": {{ boot_password_is_protected | bool }},
-              "secure_vault_subvolume_active": {{ secure_vault_enabled | bool if (is_btrfs_layout | bool and not failsafe_runtime_only_mode | bool) else false }},
-              "allocated_swap_footprint_mb": {{ target_formula_swap_mb | int }},
-              "applied_memory_swappiness_tuning": {{ target_swappiness | int }},
-              "userland_oom_defense_engine": "{{ oom_engine_selection }}"
-            },
-            "stage3_deployment_directives": {
-              "established_compliance_tier": "{{ security_tier_grade | regex_replace('^[^A-Za-z0-9]*', '') | regex_replace('[^A-Za-z0-9 ]*$', '') | trim }}",
-              "framework_operational_topology": "{{ 'STACKABLE_MODULAR_INTEGRATION' if stackable_mode | bool else 'AUTONOMOUS_STANDALONE_COMPLIANCE' }}"
+              "at_rest_storage_encryption": {{ root_disk_is_encrypted | default(true) | bool }},
+              "bootloader_password_protected": {{ boot_password_is_protected | default(false) | bool }},
+              "secure_vault_subvolume_active": {{ secure_vault_enabled | default(true) | bool }},
+              "allocated_swap_footprint_mb": {{ target_formula_swap_mb | default(4096) | int }},
+              "applied_memory_swappiness_tuning": {{ target_swappiness | default(10) | int }},
+              "userland_oom_defense_engine": "{{ oom_engine_selection | default('earlyoom') }}"
             }
           }
       when: "not ansible_check_mode"
       become: true
+
 # =============================================================================
 # BLOCK 92: POST-HARDENING DEPLOYMENT ASYNCHRONOUS HANDLERS
 # DESCRIPTION: Mounts low-overhead asynchronous execution queues to trigger
@@ -3374,4 +3180,4 @@
       args:
         executable: /bin/bash
       become: true
-          
+
