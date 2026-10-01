@@ -576,28 +576,26 @@
 # DESCRIPTION: Counts all system partitions, stores the value in a variable,
 #              and uses it to control the exact execution frequency of signature scans.
 # =============================================================================
+
     - name: "SCAN | DYNAMIC | Unfiltered block controller partition isolation"
       ansible.builtin.shell: |
         set -o pipefail
         ROOT_TARGET=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
-        ROOT_PARENT=$(lsblk -no PKNAME "$ROOT_TARGET" | head -n1 | tr -d '[:space:]')
         
-        if [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ]; then
-            if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
-                MAPPER_NAME=$(basename "${ROOT_TARGET}")
-                SLAVE_PATH=$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* 2>/dev/null | head -n1)
-                if [ -n "$SLAVE_PATH" ]; then
-                    ROOT_PARENT=$(lsblk -dno PKNAME "$SLAVE_PATH" | tr -d '[:space:]')
-                    [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ] && ROOT_PARENT=$(basename "$SLAVE_PATH" | grep -oE '^[a-z]+')
-                fi
-            fi
+        # Isolate the core parent drive handle (e.g., sda) independent of child maps
+        if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
+            MAPPER_NAME=$(basename "${ROOT_TARGET}")
+            SLAVE_PATH=$(ls -d /sys/class/block/${MAPPER_NAME}/slaves/* 2>/dev/null | head -n1)
+            ROOT_PARENT=$(lsblk -dno PKNAME "${SLAVE_PATH}" | tr -d '[:space:]')
+        else
+            ROOT_PARENT=$(lsblk -dno PKNAME "${ROOT_TARGET}" | tr -d '[:space:]')
         fi
         
         if [ -z "${ROOT_PARENT}" ] || [ "${ROOT_PARENT}" = "null" ]; then
-            ROOT_PARENT="unresolved_parent"
+            ROOT_PARENT=$(echo "${ROOT_TARGET}" | grep -oE '[a-z]+')
         fi
-        
-        # Pulls ALL structural partitions on the drive along with field counts to isolate empty lines
+
+        # Pull ALL partitions belonging to the disk architecture cleanly
         lsblk -rno NAME,TYPE,MOUNTPOINTS | awk -v rparent="${ROOT_PARENT}" '$2 == "part" && $1 ~ rparent { print "/dev/" $1 "," NF }' || true
       args:
         executable: /bin/bash
@@ -1713,7 +1711,7 @@
           AuditBackend=FileAudit
           AuditFilePath=/var/log/usbguard/usbguard-audit.log
           RuleFile=/etc/usbguard/rules.conf
-          IPCAllowedGroups=wheel,sudo,admin,root
+          IPCAllowedGroups=wheel sudo admin root
           IPCAllowedUsers=root {{ primary_human_operator | default('vega') | trim }}
       register: usbguard_config_state
       notify: "Reload Active Systemd Core"
@@ -1796,25 +1794,15 @@
         group: root
         mode: '0644'
         content: |
-          -- Certified Minimal Snort 3 Multi-Distro Configuration Matrix
-          HOME_NET = '{{ dynamic_home_net }}'
-          EXTERNAL_NET = '!{{ dynamic_home_net }}'
+          -- Minimal Snort 3 Multi-Distro Configuration Matrix
+          HOME_NET = "{{ dynamic_home_net }}"
+          EXTERNAL_NET = "!{{ dynamic_home_net }}"
 
-          ips =
-          {
-              variables =
-              {
-                  net_path = '',
-                  HOME_NET = HOME_NET,
-                  EXTERNAL_NET = EXTERNAL_NET
-              }
-          }
-
+          wizard = { }
+          binder = { }
           daq = { module = 'pcap', mode = 'passive' }
           stream = { }
           alert_fast = { file = true }
-          wizard = { }
-          binder = { }
       register: snort_conf_fix
       become: true
 
