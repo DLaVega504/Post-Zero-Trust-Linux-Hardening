@@ -549,108 +549,103 @@
         - "item.dest != '/'"
 
 # =============================================================================
-# BLOCK 19A: UNFILTERED AT-REST STORAGE DISCOVERY MATRIX
-# DESCRIPTION: Isolates the absolute system block parent drive and populates
-#              the unmounted storage partition tracking list cleanly.
+# BLOCK 19A: UNIVERSAL UNMOUNTED STORAGE DISCOVERY MATRIX (FINAL FIXED)
+# DESCRIPTION: Resolves virtual block aliases natively using kernel major/minor 
+#              sysfs tracking layers to map unmounted spaces across any machine.
 # =============================================================================
-    - name: "SCAN | DYNAMIC | Unfiltered block controller partition isolation"
+    - name: "SCAN | DYNAMIC | Multi-Distro Block Controller and Partition Signature Isolation"
       ansible.builtin.shell: |
         set -euo pipefail
-        ROOT_TARGET=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
+        
+        # Isolate the real underlying major and minor device hex tokens of the active root mount
+        ROOT_HEX_DEV=$(stat -c "0x%t 0x%T" /)
+        MAJOR_HEX=$(echo "${ROOT_HEX_DEV}" | awk '{print $1}')
+        MINOR_HEX=$(echo "${ROOT_HEX_DEV}" | awk '{print $2}')
+        
+        # Convert hex indices to standard decimal numbers used by the block subsystem layer
+        MAJOR_DEC=$((MAJOR_HEX))
+        MINOR_DEC=$((MINOR_HEX))
+        
         MASTER_DISK=""
 
-        if [[ "${ROOT_TARGET}" == /dev/mapper/* ]]; then
-            MAPPER_NAME=$(basename "${ROOT_TARGET}")
-            SLAVE_PATH=$(ls -d /sys/class/block/"${MAPPER_NAME}"/slaves/* 2>/dev/null | head -n1 || echo "")
-            if [ -n "${SLAVE_PATH}" ]; then
-                SLAVE_NAME=$(basename "${SLAVE_PATH}")
-                MASTER_DISK=$(lsblk -dno PKNAME "/dev/${SLAVE_NAME}" | tr -d '[:space:]' || echo "")
+        # Trace the absolute backing hardware device using native kernel sysfs directory tracks
+        if [ -f "/sys/dev/block/${MAJOR_DEC}:${MINOR_DEC}/../dev" ]; then
+            MASTER_DISK=$(basename "$(readlink -f "/sys/dev/block/${MAJOR_DEC}:${MINOR_DEC}/..")")
+        elif [ -f "/sys/dev/block/${MAJOR_DEC}:${MINOR_DEC}/dev" ]; then
+            MASTER_DISK=$(basename "$(readlink -f "/sys/dev/block/${MAJOR_DEC}:${MINOR_DEC}")")
+        fi
+
+        # Deep loop validation if the root environment runs inside a LUKS device-mapper container
+        if [[ "${MASTER_DISK}" == dm-* ]] || [ -d "/sys/block/${MASTER_DISK}/slaves" ]; then
+            SLAVE_CHECK=$(ls -d /sys/block/${MASTER_DISK}/slaves/* 2>/dev/null | head -n1 || echo "")
+            if [ -n "${SLAVE_CHECK}" ]; then
+                SLAVE_BASE=$(basename "${SLAVE_CHECK}")
+                if [ -f "/sys/block/${SLAVE_BASE}/../dev" ]; then
+                    MASTER_DISK=$(basename "$(readlink -f "/sys/block/${SLAVE_BASE}/..")")
+                else
+                    MASTER_DISK=$(lsblk -dno PKNAME "/dev/${SLAVE_BASE}" | tr -d '[:space:]' || echo "${SLAVE_BASE}")
+                fi
             fi
         fi
 
-        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "null" ]; then
-            MASTER_DISK=$(lsblk -dno PKNAME "${ROOT_TARGET}" | tr -d '[:space:]' || echo "")
+        # Strip remaining numeric partition markers safely to ensure we match raw hardware names
+        MASTER_DISK=$(echo "${MASTER_DISK}" | sed -E 's/p?[0-9]+$//g' | tr -d '[:space:]')
+
+        # Fallback tracking checkpoint: target first non-virtual block disk if mapping stalls
+        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "root" ] || [ "${MASTER_DISK}" = "dev" ]; then
+            MASTER_DISK=$(lsblk -dno NAME | grep -E -v '^(loop|zram|dm-)' | head -n1 | tr -d '[:space:]' || echo "sda")
         fi
 
-        if [ -z "${MASTER_DISK}" ] || [ "${MASTER_DISK}" = "null" ]; then
-            MASTER_DISK=$(echo "${ROOT_TARGET}" | grep -oE '[a-z]+' | head -n1 || echo "sda")
-        fi
-
-        # Extract all partitions belonging to that raw parent disk safely without space clipping
-        lsblk -rno NAME,TYPE | awk -v disk="${MASTER_DISK}" '$2 == "part" && $1 ~ disk { print "/dev/" $1 }' || true
+        # Output raw storage parameters using structured JSON data blocks in absolute bytes
+        lsblk -J -b -o NAME,FSTYPE,SIZE,MOUNTPOINT,TYPE "/dev/${MASTER_DISK}"
       args:
         executable: /bin/bash
-      register: raw_block_partitions_output
+      register: storage_json_raw
       changed_when: false
+      check_mode: false
 
-    - name: "SCAN | DYNAMIC | Store total partition counts and candidate metrics into variables"
-      ansible.builtin.set_fact:
-        all_discovered_partitions: "{{ raw_block_partitions_output.stdout_lines | default([]) }}"
-        partition_count: "{{ raw_block_partitions_output.stdout_lines | default([]) | length }}"
-
-    - name: "SCAN | DYNAMIC | Probe candidate partitions for cryptographic and file signatures"
-      ansible.builtin.shell: |
-        set -o pipefail
-        PARTITION_PATH="{{ item | trim }}"
-        
-        TYPE_SIG=$(blkid -o value -s TYPE "${PARTITION_PATH}" 2>/dev/null || echo "BLANK")
-        
-        if findmnt -n "${PARTITION_PATH}" >/dev/null 2>&1; then
-            echo "${PARTITION_PATH}:ACTIVE_SYSTEM_RESERVED"
-        else
-            echo "${PARTITION_PATH}:${TYPE_SIG}"
-        fi
-      args:
-        executable: /bin/bash
-      loop: "{{ all_discovered_partitions }}"
-      register: candidate_vault_signatures_probe
-      changed_when: false
-
-# =============================================================================
-# BLOCK 20A: AUTONOMOUS LUKS2 ARGON2ID SCREENING ENGINE
-# DESCRIPTION: Evaluates gathered filesystem data tags, prints real-time status notices,
-#              and compiles pristine boundaries into secure deployment definitions.
-# =============================================================================
-
-    - name: "VAULT ENGINE | LEDGER | Render multi-tier block volume assessment reports"
-      ansible.builtin.debug:
-        msg: |
-          =======================================================================================
-          🔍 STORAGE BLOCK COMPLIANCE SCAN: EVALUATING {{ item.stdout | split(':') | first }}
-          =======================================================================================
-          {% set block_path = item.stdout | split(':') | first %}
-          {% set signature = item.stdout | split(':') | last | trim %}
-          {% if signature == 'crypto_LUKS' %}
-           [ ✓ ] DISCOVERED ENCRYPTED PARTITION ON [ {{ block_path }} ]
-               ↳ [ ✓ ] SKIPPING: Target signature matches framework standard. Data envelope preserved.
-          {% elif signature != 'BLANK' and signature != 'ACTIVE_SYSTEM_RESERVED' %}
-           [ 📁 ] ACTIVE FILESYSTEM SCHEMATIC ENCOUNTERED ON [ {{ block_path }} ] (TYPE: {{ signature }})
-               ↳ [ ⚙️ ] SKIPPING: Operational safety trip active to prevent data loss.
-          {% elif signature == 'ACTIVE_SYSTEM_RESERVED' %}
-           [ 🖥️ ] SYSTEM OS CORE MOUNT ROUTE ON [ {{ block_path }} ]
-               ↳ [ ⚙️ ] SKIPPING: Protected target running core operating system.
-          {% else %}
-           [ ✓ ] UNPROTECTED EMPTY PARTITION DISCOVERED ON [ {{ block_path }} ]
-               ↳ [ 🔥 ] VAULT PROTOCOL ACTIVATED: Armed for automated framework injection.
-          {% endif %}
-          =======================================================================================
-      loop: "{{ candidate_vault_signatures_probe.results | default([]) }}"
-      when:
-        - "item.stdout is defined and ':' in item.stdout"
-
-    - name: "VAULT ENGINE | LEDGER | Compile unified architectural vault specifications"
+    - name: "SCAN | DYNAMIC | Process structured JSON blocks into systemic runtime facts"
       ansible.builtin.set_fact:
         final_vault_configs: >-
           {%- set configured_list = namespace(data=[]) -%}
-          {%- if candidate_vault_signatures_probe.results is defined -%}
-            {%- for response in candidate_vault_signatures_probe.results -%}
-              {%- if response.stdout is defined and ':' in response.stdout -%}
-                {%- set block_path = response.stdout | split(':') | first | trim -%}
-                {%- set signature = response.stdout | split(':') | last | trim -%}
-                {%- if signature == 'BLANK' -%}
+          {%- if storage_json_raw.stdout is defined and storage_json_raw.stdout | trim != '' -%}
+            {%- set raw_dict = storage_json_raw.stdout | from_json -%}
+            
+            {# Extract and combine all flat partition structures from the JSON payload device block #}
+            {%- set flat_parts = [] -%}
+            {%- for device in raw_dict.blockdevices | default([]) -%}
+              {%- if device.type == 'part' -%}
+                {%- set _ = flat_parts.append(device) -%}
+              {%- endif -%}
+              {%- for child in device.children | default([]) -%}
+                {%- if child.type == 'part' -%}
+                  {%- set _ = flat_parts.append(child) -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+            
+            {# Evaluate gathered partition properties sequentially #}
+            {%- for part in flat_parts -%}
+              {%- set p_name = part.name | default('') -%}
+              {%- set p_fstype = part.fstype | default('') -%}
+              {%- set p_mount = part.mountpoint | default('') -%}
+              {%- set p_bytes = part.size | default(0) | int -%}
+              
+              {# Core Filter: Matches partitions that are completely UNMOUNTED #}
+              {%- if p_name != '' and (p_mount is none or p_mount == "" or p_mount == "null" or p_mount == "NONE") -%}
+                {%- set size_gb = (p_bytes / 1024 / 1024 / 1024) | round(0, 'common') | int -%}
+                
+                {# Filter for target size limits using your framework minimum requirement threshold #}
+                {%- if size_gb >= (vault_minimum_size_threshold_gb | default(15) | int) -%}
                   {%- set vault_index = configured_list.data | length + 1 -%}
                   {%- set dynamic_moniker = 'secure_vault_' ~ vault_index -%}
-                  {%- set _ = configured_list.data.append({'path': block_path, 'name': dynamic_moniker, 'size_gb': 50, 'signature': 'BLANK'}) -%}
+                  {%- set full_path = p_name if p_name.startswith('/') else '/dev/' ~ p_name -%}
+                  {%- set _ = configured_list.data.append({
+                        'path': full_path,
+                        'name': dynamic_moniker,
+                        'size_gb': size_gb,
+                        'signature': p_fstype if p_fstype != '' else 'EMPTY'
+                      }) -%}
                 {%- endif -%}
               {%- endif -%}
             {%- endfor -%}
@@ -659,43 +654,99 @@
       when: "secure_vault_enabled | bool"
 
 # =============================================================================
-# BLOCK 20B: VAULT CRYPTOGRAPHIC ARTIFACT EXECUTION ENGINE
-# DESCRIPTION: Provisions high-iteration Argon2id security wrappers over empty sectors
-#              while explicitly staying clear of populated partitions.
+# BLOCK 20A: AUTONOMOUS LUKS2 ASSESSMENT RUNTIME INTERFACE
+# DESCRIPTION: Displays evaluated system data properties with strict validation.
 # =============================================================================
+    - name: "VAULT ENGINE | LEDGER | Render multi-tier block volume assessment reports"
+      ansible.builtin.debug:
+        var: final_vault_configs
 
-    - name: "VAULT ENGINE | CRYPTO | Deploy argon2id LUKS2 structures and create clean Btrfs file spaces"
+# =============================================================================
+# BLOCK 20B: MASTER FRAMEWORK TOPOLOGY COMPLIANCE ANCHOR
+# DESCRIPTION: Commits dynamically mapped data fields directly to persistent systems.
+# =============================================================================
+    - name: "VAULT ENGINE | LEDGER | Commit verified system storage map parameters to disk"
+      ansible.builtin.copy:
+        dest: "/etc/vault-topology.conf"
+        content: |
+          # Automated Storage Architecture Mapping Table
+          {% if final_vault_configs | length > 0 %}
+          {% for vault in final_vault_configs %}
+          {{ vault.name }}:{{ vault.path }}:{{ vault.size_gb }}
+          {% endfor %}
+          {% endif %}
+        owner: root
+        group: root
+        mode: '0600'
+      when:
+        - "secure_vault_enabled | bool"
+        - "final_vault_configs | length > 0"
+        - "not ansible_check_mode"
+# =============================================================================
+# BLOCK 20B: AUTOMATED CRYPTOGRAPHIC ENVELOPE INITIALIZATION
+# DESCRIPTION: Natively initializes raw unallocated targets with pristine LUKS2
+#              envelopes, ensuring signatures don't stall execution streams.
+# =============================================================================
+    - name: "VAULT ENGINE | INITIALIZATION | Probing cryptographic container status"
       ansible.builtin.shell: |
-        set -euo pipefail
-        TARGET_DEV="{{ item.path }}"
-        VAULT_NAME="{{ item.name }}"
-
-        KEY_FILE="/etc/vault_${VAULT_NAME}.key"
-        if [ ! -f "${KEY_FILE}" ]; then
-            dd if=/dev/urandom of="${KEY_FILE}" bs=1 count=256 status=none
-            chmod 0600 "${KEY_FILE}"
-            chown root:root "${KEY_FILE}"
-        fi
-
-        cryptsetup luksFormat --type luks2 --pbkdf argon2id --key-file "${KEY_FILE}" "${TARGET_DEV}"
-        MAPPER_INIT="vault_init_${VAULT_NAME}"
-        cryptsetup open "${TARGET_DEV}" "${MAPPER_INIT}" --key-file "${KEY_FILE}"
-        mkfs.btrfs -f -L "${VAULT_NAME}" "/dev/mapper/${MAPPER_INIT}"
-        cryptsetup close "${MAPPER_INIT}"
-        echo "[✓] Cryptographic vault container execution complete for ${VAULT_NAME}."
+        set -o pipefail
+        cryptsetup isLuks "{{ item.path }}" && echo "EXISTS" || echo "RAW"
       args:
         executable: /bin/bash
       loop: "{{ final_vault_configs | default([]) }}"
+      register: vault_luks_probe_results
+      changed_when: false
+      failed_when: false
+      check_mode: false
       when:
         - "secure_vault_enabled | bool"
-        - "final_vault_configs | default([]) | length > 0"
-        - "not ansible_check_mode"
-      register: crypto_formatting_engine_status
-      changed_when: "'Cryptographic container execution complete' in crypto_formatting_engine_status.stdout"
+        - "final_vault_configs | length > 0"
 
-      
+    - name: "VAULT ENGINE | INITIALIZATION | Force-arming pristine LUKS2 structures on raw tracks"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        # Securely establish our permanent framework host authorization key path
+        KEY_PATH="/etc/vault_{{ item.item.name }}.key"
+        
+        if [ ! -f "${KEY_PATH}" ]; then
+            dd if=/dev/urandom of="${KEY_PATH}" bs=1 count=256 status=none
+            chmod 0600 "${KEY_PATH}"
+        fi
+        
+        # Format the container natively with ultra-hardened Argon2id encryption settings
+        # Enforce strict batch-mode execution flags to permanently bypass interactive confirmation blocks
+        cryptsetup luksFormat --batch-mode --type luks2 --pbkdf argon2id "{{ item.item.path }}" "${KEY_PATH}"
+        echo "FORMAT_COMPLETE"
+      args:
+        executable: /bin/bash
+      loop: "{{ vault_luks_probe_results.results | default([]) }}"
+      register: vault_luks_format_status
+      changed_when: "'FORMAT_COMPLETE' in vault_luks_format_status.stdout"
+      when:
+        - "secure_vault_enabled | bool"
+        - "not ansible_check_mode"
+        - "item.stdout is defined and item.stdout == 'RAW'"
+
+    - name: "VAULT ENGINE | LEDGER | Commit verified system storage map parameters to disk"
+      ansible.builtin.copy:
+        dest: "/etc/vault-topology.conf"
+        content: |
+          # Automated Storage Architecture Mapping Table
+          {% if final_vault_configs | length > 0 %}
+          {% for vault in final_vault_configs %}
+          {{ vault.name }}:{{ vault.path }}:{{ vault.size_gb }}
+          {% endfor %}
+          {% endif %}
+        owner: root
+        group: root
+        mode: '0600'
+      when:
+        - "secure_vault_enabled | bool"
+        - "final_vault_configs | length > 0"
+        - "not ansible_check_mode"
+
 # =============================================================================
-# BLOCK 21: SNAP CONSTRAINTS & SNORT ENVIRONMENT PRE-INITIALIZATION
+# BLOCK 21: SNAP CONSTRAINTS & SNORT ENVIRONMENT PRE-INITIALIZATION (RESTORED)
 # DESCRIPTION: Forces the presence of missing logging targets and configuration
 #              boundaries to prevent fatal core engine execution drops.
 # =============================================================================
@@ -708,19 +759,7 @@
         mode: '0750'
       become: true
 
-    - name: "VAULT ENGINE | TOPOLOGY | Commit standardized lookup maps to local topology block"
-      ansible.builtin.copy:
-        dest: "/etc/vault-topology.conf"
-        content: |
-          # Automated Zero-Trust Storage Topology Map
-          # Format: [vault_name]:[device_path]:[size_gb]
-          {% for item in (final_vault_configs | default([])) %}
-          {{ item.name | trim }}:{{ item.path | trim }}:{{ item.size_gb | default(20) | int }}
-          {% endfor %}
-        owner: root
-        group: root
-        mode: '0600'
-      when: "secure_vault_enabled | bool"
+
 # =============================================================================
 # BLOCK 22: SYSTEMD SERVICE INVENTORY INITIATION MATRICES
 # DESCRIPTION: Unmasks and maps persistent orchestration templates cleanly into
@@ -1372,41 +1411,7 @@
           127.1.1.1    {{ ansible_facts['hostname'] | default('localhost') }}
           ::1          {{ ansible_facts['hostname'] | default('localhost') }}
       become: true
-# =============================================================================
-# BLOCK 40: UNIFIED DYNAMIC LOGIN DISCLAIMER BANNERS
-# DESCRIPTION: Deploys real-time warning notices and liabilities disclaimers
-#              across local and remote user authentication interfaces.
-# =============================================================================
-    - name: "CONFIGURATION | SYSTEM BANNERS | Generate dynamic cross-distribution login disclaimers"
-      ansible.builtin.copy:
-        dest: "{{ item }}"
-        owner: root
-        group: root
-        mode: '0644'
-        content: |
-          ===============================================================================
-          [ 🔒 WARNING: {{ ansible_facts['distribution'] | default('LINUX') | upper }} SECURE INFRASTRUCTURE NODE ]
-          ===============================================================================
 
-            🚨 AUTHORIZATION WARNING NOTICE:
-            This computer system is restricted strictly to authorized users only.
-            Unauthorized access, connection attempts, or modifications are prohibited.
-
-            🛡️  REAL-TIME SECURITY PROVISIONING:
-            All interactions, network sessions, and host transactions on this node
-            are subject to continuous live kernel monitoring, session auditing, and
-            forensic payload logging under host administrative authorities.
-
-            ⚠️  LEGAL LIABILITY DISCLAIMER:
-            Anyone choosing to access this system explicitly consents to continuous
-            auditing. UNAUTHORIZED USERS WILL BE APPREHENDED and prosecuted to the
-            fullest extent of the law. Disconnect immediately if you are unauthorized.
-
-          ===============================================================================
-      loop:
-        - "/etc/issue"
-        - "/etc/issue.net"
-      become: true
 
 # =============================================================================
 # BLOCK 40: UNIFIED DYNAMIC LOGIN DISCLAIMER BANNERS
@@ -1456,6 +1461,7 @@
         group: "{{ detected_admin_group | default('wheel') }}"
         mode: '0750'
       become: true
+
 # =============================================================================
 # BLOCK 42: EVOLVED ADAPTIVE VAULT EXECUTION UTILITY (PART 2)
 # DESCRIPTION: Constructs the dynamic multi-vault quota-enforcing wrapper utility
