@@ -654,12 +654,30 @@
       when: "secure_vault_enabled | bool"
 
 # =============================================================================
-# BLOCK 20A: AUTONOMOUS LUKS2 ASSESSMENT RUNTIME INTERFACE
-# DESCRIPTION: Displays evaluated system data properties with strict validation.
+# BLOCK 20A: AUTONOMOUS LUKS2 ASSESSMENT RUNTIME INTERFACE (BANK ICON ENFORCED)
+# DESCRIPTION: Splices synchronized lock and bank vault secure icons directly 
+#              into the sequential list terminal output blocks.
 # =============================================================================
     - name: "VAULT ENGINE | LEDGER | Render multi-tier block volume assessment reports"
       ansible.builtin.debug:
-        var: final_vault_configs
+        msg: "{{ report_output.split('\n') }}"
+      vars:
+        report_output: |
+          =======================================================================================
+          🔒 [ SECURITY BLOCK MONITOR ]: DYNAMIC HARDWARE ASSESSMENT LABELS
+          =======================================================================================
+          {% if final_vault_configs is defined and final_vault_configs | length > 0 %}
+          {% for vault in final_vault_configs %}
+          🔒🏦 [ {{ vault.name | upper }} ENVELOPE INITIALIZED AND ARMED ]
+            ↳ TARGET PATH  : [ {{ vault.path }} ]
+            ↳ STORAGE SCALE: [ {{ vault.size_gb }} GB POOL SPACE DETECTED ]
+          
+          ✨ [🔥] VAULT PROTOCOL ACTIVATED: ARMED FOR SYSTEM INJECTION!
+          {% endfor %}
+          {% else %}
+          ⚠️ [ WARNING ]: No unallocated clean space partitions detected on local block devices.
+          {% endif %}
+          =======================================================================================
 
 # =============================================================================
 # BLOCK 20B: MASTER FRAMEWORK TOPOLOGY COMPLIANCE ANCHOR
