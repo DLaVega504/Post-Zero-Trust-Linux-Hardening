@@ -550,8 +550,8 @@
 
 # =============================================================================
 # BLOCK 19A: UNIVERSAL UNMOUNTED STORAGE DISCOVERY MATRIX (FINAL FIXED)
-# DESCRIPTION: Resolves virtual block aliases natively using kernel major/minor 
-#              sysfs tracking layers to map unmounted spaces across any machine.
+# DESCRIPTION: Resolves virtual aliases natively and isolates unmounted target
+#              partitions using user-friendly alphanumeric 'vault#' prefixes.
 # =============================================================================
     - name: "SCAN | DYNAMIC | Multi-Distro Block Controller and Partition Signature Isolation"
       ansible.builtin.shell: |
@@ -611,7 +611,6 @@
           {%- if storage_json_raw.stdout is defined and storage_json_raw.stdout | trim != '' -%}
             {%- set raw_dict = storage_json_raw.stdout | from_json -%}
             
-            {# Extract and combine all flat partition structures from the JSON payload device block #}
             {%- set flat_parts = [] -%}
             {%- for device in raw_dict.blockdevices | default([]) -%}
               {%- if device.type == 'part' -%}
@@ -624,28 +623,29 @@
               {%- endfor -%}
             {%- endfor -%}
             
-            {# Evaluate gathered partition properties sequentially #}
             {%- for part in flat_parts -%}
               {%- set p_name = part.name | default('') -%}
               {%- set p_fstype = part.fstype | default('') -%}
               {%- set p_mount = part.mountpoint | default('') -%}
               {%- set p_bytes = part.size | default(0) | int -%}
               
-              {# Core Filter: Matches partitions that are completely UNMOUNTED #}
               {%- if p_name != '' and (p_mount is none or p_mount == "" or p_mount == "null" or p_mount == "NONE") -%}
-                {%- set size_gb = (p_bytes / 1024 / 1024 / 1024) | round(0, 'common') | int -%}
                 
-                {# Filter for target size limits using your framework minimum requirement threshold #}
-                {%- if size_gb >= (vault_minimum_size_threshold_gb | default(15) | int) -%}
-                  {%- set vault_index = configured_list.data | length + 1 -%}
-                  {%- set dynamic_moniker = 'secure_vault_' ~ vault_index -%}
-                  {%- set full_path = p_name if p_name.startswith('/') else '/dev/' ~ p_name -%}
-                  {%- set _ = configured_list.data.append({
-                        'path': full_path,
-                        'name': dynamic_moniker,
-                        'size_gb': size_gb,
-                        'signature': p_fstype if p_fstype != '' else 'EMPTY'
-                      }) -%}
+                {# CRITICAL HARDWARE SAFETY FILTER: Explicitly skips sda2 to protect your main operating system #}
+                {%- if 'sda2' not in p_name -%}
+                  {%- set size_gb = (p_bytes / 1024 / 1024 / 1024) | round(0, 'common') | int -%}
+                  
+                  {%- if size_gb >= (vault_minimum_size_threshold_gb | default(15) | int) -%}
+                    {%- set vault_index = configured_list.data | length + 1 -%}
+                    {%- set dynamic_moniker = 'vault' ~ vault_index -%}
+                    {%- set full_path = p_name if p_name.startswith('/') else '/dev/' ~ p_name -%}
+                    {%- set _ = configured_list.data.append({
+                          'path': full_path,
+                          'name': dynamic_moniker,
+                          'size_gb': size_gb,
+                          'signature': 'EMPTY'
+                        }) -%}
+                  {%- endif -%}
                 {%- endif -%}
               {%- endif -%}
             {%- endfor -%}
@@ -665,68 +665,6 @@
 # BLOCK 20B: MASTER FRAMEWORK TOPOLOGY COMPLIANCE ANCHOR
 # DESCRIPTION: Commits dynamically mapped data fields directly to persistent systems.
 # =============================================================================
-    - name: "VAULT ENGINE | LEDGER | Commit verified system storage map parameters to disk"
-      ansible.builtin.copy:
-        dest: "/etc/vault-topology.conf"
-        content: |
-          # Automated Storage Architecture Mapping Table
-          {% if final_vault_configs | length > 0 %}
-          {% for vault in final_vault_configs %}
-          {{ vault.name }}:{{ vault.path }}:{{ vault.size_gb }}
-          {% endfor %}
-          {% endif %}
-        owner: root
-        group: root
-        mode: '0600'
-      when:
-        - "secure_vault_enabled | bool"
-        - "final_vault_configs | length > 0"
-        - "not ansible_check_mode"
-# =============================================================================
-# BLOCK 20B: AUTOMATED CRYPTOGRAPHIC ENVELOPE INITIALIZATION
-# DESCRIPTION: Natively initializes raw unallocated targets with pristine LUKS2
-#              envelopes, ensuring signatures don't stall execution streams.
-# =============================================================================
-    - name: "VAULT ENGINE | INITIALIZATION | Probing cryptographic container status"
-      ansible.builtin.shell: |
-        set -o pipefail
-        cryptsetup isLuks "{{ item.path }}" && echo "EXISTS" || echo "RAW"
-      args:
-        executable: /bin/bash
-      loop: "{{ final_vault_configs | default([]) }}"
-      register: vault_luks_probe_results
-      changed_when: false
-      failed_when: false
-      check_mode: false
-      when:
-        - "secure_vault_enabled | bool"
-        - "final_vault_configs | length > 0"
-
-    - name: "VAULT ENGINE | INITIALIZATION | Force-arming pristine LUKS2 structures on raw tracks"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        # Securely establish our permanent framework host authorization key path
-        KEY_PATH="/etc/vault_{{ item.item.name }}.key"
-        
-        if [ ! -f "${KEY_PATH}" ]; then
-            dd if=/dev/urandom of="${KEY_PATH}" bs=1 count=256 status=none
-            chmod 0600 "${KEY_PATH}"
-        fi
-        
-        # Format the container natively with ultra-hardened Argon2id encryption settings
-        # Enforce strict batch-mode execution flags to permanently bypass interactive confirmation blocks
-        cryptsetup luksFormat --batch-mode --type luks2 --pbkdf argon2id "{{ item.item.path }}" "${KEY_PATH}"
-        echo "FORMAT_COMPLETE"
-      args:
-        executable: /bin/bash
-      loop: "{{ vault_luks_probe_results.results | default([]) }}"
-      register: vault_luks_format_status
-      changed_when: "'FORMAT_COMPLETE' in vault_luks_format_status.stdout"
-      when:
-        - "secure_vault_enabled | bool"
-        - "not ansible_check_mode"
-        - "item.stdout is defined and item.stdout == 'RAW'"
-
     - name: "VAULT ENGINE | LEDGER | Commit verified system storage map parameters to disk"
       ansible.builtin.copy:
         dest: "/etc/vault-topology.conf"
@@ -1582,24 +1520,32 @@
       ansible.builtin.set_fact:
         vault_perimeter_is_clamped: true
       when: "secure_vault_enabled | bool"
+
 # =============================================================================
-# BLOCK 46: DYNAMIC LOGON PER-USER ENV ALIAS MATRIX
+# BLOCK 46: DYNAMIC LOGON PER-USER ENV ALIAS MATRIX (FINAL SYNCHRONIZED)
 # DESCRIPTION: Sets interactive shortcut mapping templates inside environment variables
-#              to automatically configure user profile session aliases.
+#              to automatically configure user profile session aliases cleanly.
 # =============================================================================
-    - name: "VAULT ENGINE | ALIASES | Enforce dynamic terminal environment environment hooks"
+    - name: "VAULT ENGINE | ALIASES | Enforce dynamic terminal environment hooks"
       ansible.builtin.copy:
         dest: "/etc/profile.d/vault_aliases.sh"
         content: |
           # =================================================================
           # AUTOMATED ZERO-TRUST DYNAMIC MULTI-DISTRO VAULT ALIAS GENERATOR
           # =================================================================
+          # Verifies user identities securely before mapping execution aliases
           if [ "$(id -un)" = "{{ primary_human_operator | default('vega') }}" ] || [ "$(id -u)" -eq 0 ] || groups | grep -q -E '({{ detected_admin_group | default('wheel') }}|wheel|sudo|root)'; then
               if [ -f /etc/vault-topology.conf ]; then
                   while IFS=: read -r vault_name device_path size_gb || [ -n "$vault_name" ]; do
+                      # Safe exclusion for comment blocks or empty lines inside the config mapping ledger
                       [[ -z "$vault_name" || "$vault_name" =~ ^# ]] && continue
-                      alias "${vault_name}-open"="sudo /usr/bin/vault open ${vault_name}"
-                      alias "${vault_name}-close"="sudo /usr/bin/vault close ${vault_name}"
+                      
+                      # Clean string mapping initialization to protect shell token boundaries
+                      CLEAN_MONIKER=$(echo "${vault_name}" | tr -d '[:space:]')
+                      
+                      # Map un-falsifiable terminal shortcut operations cleanly into the system variables matrix
+                      alias "${CLEAN_MONIKER}-open"="sudo /usr/bin/vault open ${CLEAN_MONIKER}"
+                      alias "${CLEAN_MONIKER}-close"="sudo /usr/bin/vault close ${CLEAN_MONIKER}"
                   done < /etc/vault-topology.conf
               fi
           fi
@@ -1607,6 +1553,7 @@
         group: root
         mode: '0644'
       when: "secure_vault_enabled | bool"
+
 # =============================================================================
 # BLOCK 47: DYNAMIC LOGON PER-USER ENV ALIAS MATRIX (PART 2)
 # DESCRIPTION: Placeholder matrix segment allocated sequentially to maintain
@@ -1616,6 +1563,7 @@
       ansible.builtin.set_fact:
         vault_aliases_are_live: true
       when: "secure_vault_enabled | bool"
+
 # =============================================================================
 # BLOCK 48: LINK-LAYER ARPWATCH OVERRIDE SANDBOXING (PART 1)
 # DESCRIPTION: Ensures master environment paths are configuration safe and touches
